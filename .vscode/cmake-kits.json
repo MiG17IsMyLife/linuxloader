@@ -1,0 +1,19 @@
+[
+  {
+    "name": "win32",
+    "toolchainFile": "${workspaceFolder}/mingw32.cmake",
+    "preferredGenerator": {
+      "name": "Unix Makefiles"
+    }
+  },
+  {
+    "name": "linux",
+    "compilers": {
+      "C": "/usr/bin/gcc",
+      "CXX": "/usr/bin/g++"
+    },
+    "preferredGenerator": {
+      "name": "Unix Makefiles"
+    }
+  }
+]

@@ -68,6 +68,7 @@ namespace LibcBridge
     int bridgeNanosleep(const struct timespec *req, struct timespec *rem);
     int bridgeClockGettime(int clk_id, struct timespec *tp);
     time_t bridgeMktime(struct tm *tm);
+    size_t bridgeStrftime(char *s, size_t maxsize, const char *format, const struct tm *timeptr);
 
     void bridgeAbort();
     void bridgeExit(int status);

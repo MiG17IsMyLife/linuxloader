@@ -80,6 +80,7 @@ namespace LibcBridge
         MAP("localtime_r", sharedLocaltime_R);
         MAP("clock_gettime", bridgeClockGettime);
         MAP("mktime", bridgeMktime);
+        MAP("strftime", bridgeStrftime);
 
         // abort/exit
         MAP("abort", bridgeAbort);
@@ -634,6 +635,12 @@ namespace LibcBridge
     {
         log_trace("Intercepted mktime");
         return mktime(tm);
+    }
+
+    size_t bridgeStrftime(char *s, size_t maxsize, const char *format, const struct tm *timeptr)
+    {
+        log_trace("Intercepted strftime");
+        return strftime(s, maxsize, format, timeptr);
     }
 
     int bridgeSysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp, void *newp, size_t newlen)

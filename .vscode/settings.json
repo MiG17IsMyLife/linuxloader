@@ -1,0 +1,12 @@
+{
+    "cmake.buildDirectory": "${workspaceFolder}/build-${buildKit}",
+    "cmake.copyCompileCommands": "${workspaceFolder}/compile_commands.json",
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}",
+        "--fallback-style=none",
+        "--header-insertion=never"
+#    ],
+#    "clangd.fallbackFlags": [
+#        "-std=c++17"
+    ]
+}

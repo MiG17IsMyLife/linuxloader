@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.1]
+### Added
+### Fixed
+    - A bug in ID5 where it would crash when you finish the race.
+    - Fixed links in Discord Bot.
+
 ## [3.0.0]
 ### Added
     - Added an ELF loader to load games in Windows.

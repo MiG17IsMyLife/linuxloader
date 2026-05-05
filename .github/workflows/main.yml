@@ -135,9 +135,9 @@ jobs:
           ASSETS_JSON=$(gh release view ${{ needs.prepare-source.outputs.release_tag }} --json assets)
           
           # Extract each URL
-          ZIP_URL=$(echo "$ASSETS_JSON" | jq -r '.assets[] | select(.name=="linuxLoader-win32.zip") | .url')
-          APPIMAGE_URL=$(echo "$ASSETS_JSON" | jq -r '.assets[] | select(.name=="linuxLoader.AppImage") | .url')
-          TAR_URL=$(echo "$ASSETS_JSON" | jq -r '.assets[] | select(.name=="linuxLoader-linux.tar.gz") | .url')
+          ZIP_URL=$(echo "$ASSETS_JSON" | jq -r '.assets[] | select(.name=="linuxloader-win32.zip") | .url')
+          APPIMAGE_URL=$(echo "$ASSETS_JSON" | jq -r '.assets[] | select(.name=="linuxloader.AppImage") | .url')
+          TAR_URL=$(echo "$ASSETS_JSON" | jq -r '.assets[] | select(.name=="linuxloader-linux.tar.gz") | .url')
           
           # Get the changelog body (no need to escape it for jq)
           CHANGELOG_BODY=$(cat ${{ steps.changelog.outputs.notes_file }} | head -c 2000)
