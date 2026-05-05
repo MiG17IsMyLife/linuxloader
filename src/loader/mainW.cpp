@@ -48,7 +48,7 @@ LONG CALLBACK myVectoredHandler(PEXCEPTION_POINTERS ExceptionInfo)
         {
             printf("INT 80 caught at EIP %X!\n", ctx->Eip);
             if (ctx->Eax == 0xE0)
-            { // gettid
+            { 
                 ctx->Eax = (DWORD)PthreadEmu::pthreadSelf();
                 ctx->Eip += 2; // Skip the instruction
                 return EXCEPTION_CONTINUE_EXECUTION;
