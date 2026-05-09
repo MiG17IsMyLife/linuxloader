@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cerrno>
+#include <wchar.h>
 
 #include "../log/log.h"
 #include <stdio.h>
@@ -217,6 +218,11 @@ bool MemoryManager::CommitSegment(uintptr_t vaddr, uintptr_t memsz)
 void *MemoryManager::customMemmove(void *dest, const void *src, size_t n)
 {
     return memmove(dest, src, n);
+}
+
+wchar_t *MemoryManager::customWmemmove(wchar_t *dest, const wchar_t *src, size_t n)
+{
+    return wmemmove(dest, src, n);
 }
 
 int MemoryManager::customStrcoll(const char *s1, const char *s2)

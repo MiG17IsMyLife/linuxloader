@@ -12,13 +12,14 @@
 #include "elfLoader/ipcBridge.hpp"
 #include "elfLoader/elfLoader.hpp"
 #include "elfLoader/filesystemBridge.hpp"
-#include "elfLoader/graphicsBridge.hpp"
 #include "elfLoader/libcBridge.hpp"
 #include "elfLoader/gccBridge.hpp"
+#include "elfLoader/graphicsBridge.hpp"
 #include "elfLoader/pthreadBridge.hpp"
 #include "elfLoader/regexBridge.hpp"
 #include "elfLoader/termiosBridge.hpp"
 #include "elfLoader/networkBridge.hpp"
+#include "elfLoader/mathBridge.hpp"
 #include "elfLoader/symbolResolver.hpp"
 #include "elfLoader/pthread/pthreadEmu.hpp"
 #include "log/log.h"
@@ -40,30 +41,28 @@ LONG CALLBACK myVectoredHandler(PEXCEPTION_POINTERS ExceptionInfo)
     DWORD exceptionCode = ExceptionInfo->ExceptionRecord->ExceptionCode;
     PCONTEXT ctx = ExceptionInfo->ContextRecord;
 
-    if (exceptionCode == EXCEPTION_ACCESS_VIOLATION || exceptionCode == EXCEPTION_PRIV_INSTRUCTION)
-    {
-        uint8_t *pint = (uint8_t *)ctx->Eip;
-        // Check for 'int 0x80' opcode (0xCD 0x80)
-        if (pint && !IsBadReadPtr(pint, 2) && pint[0] == 0xCD && pint[1] == 0x80)
-        {
-            printf("INT 80 caught at EIP %X!\n", ctx->Eip);
-            if (ctx->Eax == 0xE0)
-            { 
+
+    if (exceptionCode == EXCEPTION_ACCESS_VIOLATION || exceptionCode == EXCEPTION_PRIV_INSTRUCTION) {
+        uint8_t* pint = (uint8_t*)ctx->Eip;
+        if (pint && !IsBadReadPtr(pint, 2) && pint[0] == 0xCD && pint[1] == 0x80) {        
+            if (ctx->Eax == 0xE0) { 
                 ctx->Eax = (DWORD)PthreadEmu::pthreadSelf();
-                ctx->Eip += 2; // Skip the instruction
+                ctx->Eip += 2;
                 return EXCEPTION_CONTINUE_EXECUTION;
             }
         }
     }
+
     return EXCEPTION_CONTINUE_SEARCH;
-}
+}   
+
 
 void initBridges()
 {
-    FileSystemBridge::InitBridges();
-    GraphicsBridge::InitBridges();
-    LibcBridge::InitBridges();
-    PthreadBridge::InitBridges();
+    FileSystemBridge::initBridges();
+    GraphicsBridge::initBridges();
+    LibcBridge::initBridges();
+    PthreadBridge::initBridges();
     TermiosBridge::initBridges();
     GccBridge::initBridges();
     NetworkBridge::initBridges();
@@ -71,16 +70,17 @@ void initBridges()
     SegaApiBridge::initBridges();
     Alsa2SdlBridge::initBridges();
     RegexBridge::initBridges();
+    MathBridge::initBridges();
 }
 
 int main(int argc, char *argv[], char *envp[])
 {
     logSetMinLevel(LOG_FATAL);
 
-    char command[MAX_PATH_LENGTH];
-    char originalDir[MAX_PATH_LENGTH];
-    char gameELF[MAX_PATH_LENGTH];
-    char libraryPath[MAX_PATH_LENGTH];
+    char command[MAX_PATH_LENGTH] = {0};
+    char originalDir[MAX_PATH_LENGTH] = {0};
+    char gameELF[MAX_PATH_LENGTH] = {0};
+    char libraryPath[MAX_PATH_LENGTH] = {0};
     char gamePath[MAX_PATH_LENGTH] = {0};
 
     log_info("Parsing arguments...\n");
@@ -108,9 +108,6 @@ int main(int argc, char *argv[], char *envp[])
     log_info("Initializing library search paths...\n");
     GetCurrentDirectoryA(MAX_PATH_LENGTH, gamePath);
     SymbolResolver::GetInstance().InitSearchPaths(libraryPath, gamePath);
-
-    LoadLibraryA("msys-2.0.dll");
-    LoadLibraryA("libgcc_s_dw2-1.dll");
 
     // Install Exception Handler (BEFORE any C++ code runs)
     if (!AddVectoredExceptionHandler(1, myVectoredHandler))

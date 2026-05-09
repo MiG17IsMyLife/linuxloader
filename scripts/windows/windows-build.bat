@@ -23,7 +23,7 @@ if not exist "%USR_BIN%\bash.exe" (
 
 echo [3/4] Installing MinGW32 and CMake...
 "%USR_BIN%\bash.exe" -lc "pacman -Syu --noconfirm"
-"%USR_BIN%\bash.exe" -lc "pacman -S --noconfirm mingw-w64-i686-toolchain mingw-w64-i686-cmake"
+"%USR_BIN%\bash.exe" -lc "pacman -S --noconfirm mingw-w64-i686-toolchain mingw-w64-i686-cmake make"
 
 echo [4/4] Adding MSYS2 and MinGW32 to User PATH...
 :: Fetch current User PATH to avoid duplicates
@@ -45,8 +45,23 @@ echo Setup Complete!
 
 md build-win32
 cd build-win32
-cmake ..
-cmake --build .
-echo Build should be done.
+
+echo [5/5] Executing build inside MSYS2 shell...
+
+:: Use MSYSTEM=MINGW32 to ensure the correct environment variables are loaded
+:: Use 'chroot' logic or 'cd' to the current directory inside the bash call
+set "CHERE_INVOKING=1"
+set "MSYSTEM=MINGW32"
+
+"%USR_BIN%\bash.exe" -lc "cmake .. -G 'MinGW Makefiles' && cmake --build ."
+
+copy c:\msys64\mingw32\bin\libwinpthread-1.dll C:\msys64\mingw32\lib\gcc\i686-w64-mingw32\16.1.0\
+
+if %ERRORLEVEL% EQU 0 (
+    echo Build complete.
+) else (
+    echo Build failed with error %ERRORLEVEL%
+)
+
 del %INSTALLER_EXE%
 pause

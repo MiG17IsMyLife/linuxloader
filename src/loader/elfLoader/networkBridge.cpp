@@ -2,15 +2,14 @@
 // #include <mutex>
 #include "networkBridge.hpp"
 #include "symbolResolver.hpp"
-#include "pthread/pthreadEmu.hpp"
 #include "../log/log.h"
 
 #include <winsock2.h>
-#include <ws2tcpip.h> 
+#include <ws2tcpip.h>
 #include <mutex>
 #include <cerrno>
 
-static std::mutex g_net_mutex; 
+static std::mutex g_net_mutex;
 
 #define MAP(name, func) SymbolResolver::GetInstance().RegisterVTable(name, reinterpret_cast<void *>(func))
 
@@ -111,52 +110,98 @@ static std::mutex g_net_mutex;
 #define EREMOTE EINVAL
 #endif
 
-static int mapWSAErrorToErrno(int wsaError) {
-    switch (wsaError) {
-        case WSAEINTR: return EINTR;
-        case WSAEBADF: return EBADF;
-        case WSAEACCES: return EACCES;
-        case WSAEFAULT: return EFAULT;
-        case WSAEINVAL: return EINVAL;
-        case WSAEMFILE: return EMFILE;
-        case WSAEWOULDBLOCK: return EAGAIN;
-        case WSAEINPROGRESS: return EINPROGRESS;
-        case WSAEALREADY: return EALREADY;
-        case WSAENOTSOCK: return ENOTSOCK;
-        case WSAEDESTADDRREQ: return EDESTADDRREQ;
-        case WSAEMSGSIZE: return EMSGSIZE;
-        case WSAEPROTOTYPE: return EPROTOTYPE;
-        case WSAENOPROTOOPT: return ENOPROTOOPT;
-        case WSAEPROTONOSUPPORT: return EPROTONOSUPPORT;
-        case WSAESOCKTNOSUPPORT: return ESOCKTNOSUPPORT;
-        case WSAEOPNOTSUPP: return EOPNOTSUPP;
-        case WSAEPFNOSUPPORT: return EPFNOSUPPORT;
-        case WSAEAFNOSUPPORT: return EAFNOSUPPORT;
-        case WSAEADDRINUSE: return EADDRINUSE;
-        case WSAEADDRNOTAVAIL: return EADDRNOTAVAIL;
-        case WSAENETDOWN: return ENETDOWN;
-        case WSAENETUNREACH: return ENETUNREACH;
-        case WSAENETRESET: return ENETRESET;
-        case WSAECONNABORTED: return ECONNABORTED;
-        case WSAECONNRESET: return ECONNRESET;
-        case WSAENOBUFS: return ENOBUFS;
-        case WSAEISCONN: return EISCONN;
-        case WSAENOTCONN: return ENOTCONN;
-        case WSAESHUTDOWN: return ESHUTDOWN;
-        case WSAETOOMANYREFS: return ETOOMANYREFS;
-        case WSAETIMEDOUT: return ETIMEDOUT;
-        case WSAECONNREFUSED: return ECONNREFUSED;
-        case WSAELOOP: return ELOOP;
-        case WSAENAMETOOLONG: return ENAMETOOLONG;
-        case WSAEHOSTDOWN: return EHOSTDOWN;
-        case WSAEHOSTUNREACH: return EHOSTUNREACH;
-        case WSAENOTEMPTY: return ENOTEMPTY;
-        case WSAEPROCLIM: return EPROCLIM;
-        case WSAEUSERS: return EUSERS;
-        case WSAEDQUOT: return EDQUOT;
-        case WSAESTALE: return ESTALE;
-        case WSAEREMOTE: return EREMOTE;
-        default: return EINVAL;
+static int mapWSAErrorToErrno(int wsaError)
+{
+    switch (wsaError)
+    {
+        case WSAEINTR:
+            return EINTR;
+        case WSAEBADF:
+            return EBADF;
+        case WSAEACCES:
+            return EACCES;
+        case WSAEFAULT:
+            return EFAULT;
+        case WSAEINVAL:
+            return EINVAL;
+        case WSAEMFILE:
+            return EMFILE;
+        case WSAEWOULDBLOCK:
+            return EAGAIN;
+        case WSAEINPROGRESS:
+            return EINPROGRESS;
+        case WSAEALREADY:
+            return EALREADY;
+        case WSAENOTSOCK:
+            return ENOTSOCK;
+        case WSAEDESTADDRREQ:
+            return EDESTADDRREQ;
+        case WSAEMSGSIZE:
+            return EMSGSIZE;
+        case WSAEPROTOTYPE:
+            return EPROTOTYPE;
+        case WSAENOPROTOOPT:
+            return ENOPROTOOPT;
+        case WSAEPROTONOSUPPORT:
+            return EPROTONOSUPPORT;
+        case WSAESOCKTNOSUPPORT:
+            return ESOCKTNOSUPPORT;
+        case WSAEOPNOTSUPP:
+            return EOPNOTSUPP;
+        case WSAEPFNOSUPPORT:
+            return EPFNOSUPPORT;
+        case WSAEAFNOSUPPORT:
+            return EAFNOSUPPORT;
+        case WSAEADDRINUSE:
+            return EADDRINUSE;
+        case WSAEADDRNOTAVAIL:
+            return EADDRNOTAVAIL;
+        case WSAENETDOWN:
+            return ENETDOWN;
+        case WSAENETUNREACH:
+            return ENETUNREACH;
+        case WSAENETRESET:
+            return ENETRESET;
+        case WSAECONNABORTED:
+            return ECONNABORTED;
+        case WSAECONNRESET:
+            return ECONNRESET;
+        case WSAENOBUFS:
+            return ENOBUFS;
+        case WSAEISCONN:
+            return EISCONN;
+        case WSAENOTCONN:
+            return ENOTCONN;
+        case WSAESHUTDOWN:
+            return ESHUTDOWN;
+        case WSAETOOMANYREFS:
+            return ETOOMANYREFS;
+        case WSAETIMEDOUT:
+            return ETIMEDOUT;
+        case WSAECONNREFUSED:
+            return ECONNREFUSED;
+        case WSAELOOP:
+            return ELOOP;
+        case WSAENAMETOOLONG:
+            return ENAMETOOLONG;
+        case WSAEHOSTDOWN:
+            return EHOSTDOWN;
+        case WSAEHOSTUNREACH:
+            return EHOSTUNREACH;
+        case WSAENOTEMPTY:
+            return ENOTEMPTY;
+        case WSAEPROCLIM:
+            return EPROCLIM;
+        case WSAEUSERS:
+            return EUSERS;
+        case WSAEDQUOT:
+            return EDQUOT;
+        case WSAESTALE:
+            return ESTALE;
+        case WSAEREMOTE:
+            return EREMOTE;
+        default:
+            return EINVAL;
     }
 }
 
@@ -179,11 +224,19 @@ namespace NetworkBridge
         MAP("setsockopt", bridgeSetsockopt);
         MAP("getsockopt", bridgeGetsockopt);
         MAP("inet_pton", bridgeInet_pton);
-        MAP("inet_aton", bridgeInet_aton); 
+        MAP("inet_aton", bridgeInet_aton);
         MAP("inet_addr", bridgeInet_addr);
         MAP("inet_ntoa", bridgeInet_ntoa);
+        MAP("ntohs", bridgeNtohs);
+        MAP("htons", bridgeHtons);
+        MAP("htonl", bridgeHtonl);
+        MAP("ntohl", bridgeNtohl);
         MAP("gethostbyname_r", bridgeGethostbyname_r);
-        MAP("gethostbyaddr_r", bridgeGethostbyaddr_r); 
+        MAP("gethostbyaddr_r", bridgeGethostbyaddr_r);
+        MAP("gethostbyaddr", bridgeGethostbyaddr_r);
+        MAP("gethostbyname", bridgeGethostbyname_r);
+        MAP("gethostname", bridgeGethostname);
+        MAP("getservbyname", bridgeGethostbyname_r);
     }
 
     unsigned long bridgeInet_addr(const char *cp)
@@ -207,9 +260,25 @@ namespace NetworkBridge
         return InetPtonA(af, src, dst);
     }
 
-    char* bridgeInet_ntoa(struct in_addr in)
+    char *bridgeInet_ntoa(struct in_addr in)
     {
         return inet_ntoa(in);
+    }
+    uint16_t bridgeNtohs(uint16_t netshort)
+    {
+        return ntohs(netshort);
+    }
+    uint16_t bridgeHtons(uint16_t hostshort)
+    {
+        return htons(hostshort);
+    }
+    uint32_t bridgeNtohl(uint32_t netlong)
+    {
+        return ntohl(netlong);
+    }
+    uint32_t bridgeHtonl(uint32_t hostlong)
+    {
+        return htonl(hostlong);
     }
 }; // namespace NetworkBridge
 
@@ -217,7 +286,8 @@ extern "C" SOCKET bridgeSocket(int af, int type, int protocol)
 {
     log_info(">>> socket called: af=%d, type=%d, protocol=%d", af, type, protocol);
     SOCKET s = socket(af, type, protocol);
-    if (s == INVALID_SOCKET) {
+    if (s == INVALID_SOCKET)
+    {
         errno = mapWSAErrorToErrno(WSAGetLastError());
         return (SOCKET)-1;
     }
@@ -229,7 +299,8 @@ extern "C" int bridgeConnect(SOCKET s, const struct sockaddr *name, int namelen)
 {
     log_info(">>> connect called: socket=%lld", (long long)s);
     int ret = connect(s, name, namelen);
-    if (ret == SOCKET_ERROR) {
+    if (ret == SOCKET_ERROR)
+    {
         errno = mapWSAErrorToErrno(WSAGetLastError());
     }
     log_info(">>> connect EXIT: returning %d (WSAError=%d)", ret, ret < 0 ? WSAGetLastError() : 0);
@@ -240,7 +311,8 @@ extern "C" int bridgeBind(SOCKET s, const struct sockaddr *name, int namelen)
 {
     log_info(">>> bind called: socket=%lld", (long long)s);
     int ret = bind(s, name, namelen);
-    if (ret == SOCKET_ERROR) {
+    if (ret == SOCKET_ERROR)
+    {
         errno = mapWSAErrorToErrno(WSAGetLastError());
     }
     log_info(">>> bind EXIT: returning %d", ret);
@@ -251,7 +323,8 @@ extern "C" int bridgeListen(SOCKET s, int backlog)
 {
     log_info(">>> listen called: socket=%lld, backlog=%d", (long long)s, backlog);
     int ret = listen(s, backlog);
-    if (ret == SOCKET_ERROR) {
+    if (ret == SOCKET_ERROR)
+    {
         errno = mapWSAErrorToErrno(WSAGetLastError());
     }
     log_info(">>> listen EXIT: returning %d", ret);
@@ -262,7 +335,8 @@ extern "C" SOCKET bridgeAccept(SOCKET s, struct sockaddr *addr, int *addrlen)
 {
     log_info(">>> accept ENTRY: socket=%lld (THIS MAY BLOCK!)", (long long)s);
     SOCKET ret = accept(s, addr, addrlen);
-    if (ret == INVALID_SOCKET) {
+    if (ret == INVALID_SOCKET)
+    {
         errno = mapWSAErrorToErrno(WSAGetLastError());
         return (SOCKET)-1;
     }
@@ -273,13 +347,15 @@ extern "C" SOCKET bridgeAccept(SOCKET s, struct sockaddr *addr, int *addrlen)
 extern "C" int bridgeRecv(SOCKET s, char *buf, int len, int flags)
 {
     log_info(">>> recv ENTRY: socket=%lld, len=%d (THIS MAY BLOCK!)", (long long)s, len);
-    
-    if (flags & 0x40) {
-        flags &= ~0x40; 
+
+    if (flags & 0x40)
+    {
+        flags &= ~0x40;
     }
-    
+
     int ret = recv(s, buf, len, flags);
-    if (ret == SOCKET_ERROR) {
+    if (ret == SOCKET_ERROR)
+    {
         errno = mapWSAErrorToErrno(WSAGetLastError());
     }
     log_info(">>> recv EXIT: returning %d", ret);
@@ -289,11 +365,12 @@ extern "C" int bridgeRecv(SOCKET s, char *buf, int len, int flags)
 extern "C" int bridgeSend(SOCKET s, const char *buf, int len, int flags)
 {
     log_info(">>> send called: socket=%lld, len=%d", (long long)s, len);
-    
+
     flags &= ~(0x4000 | 0x40);
-    
+
     int ret = send(s, buf, len, flags);
-    if (ret == SOCKET_ERROR) {
+    if (ret == SOCKET_ERROR)
+    {
         errno = mapWSAErrorToErrno(WSAGetLastError());
     }
     log_info(">>> send EXIT: returning %d", ret);
@@ -303,9 +380,11 @@ extern "C" int bridgeSend(SOCKET s, const char *buf, int len, int flags)
 extern "C" int bridgeRecvfrom(SOCKET s, char *buf, int len, int flags, struct sockaddr *from, int *fromlen)
 {
     log_info(">>> recvfrom ENTRY: socket=%lld, len=%d (THIS MAY BLOCK!)", (long long)s, len);
-    if (flags & 0x40) flags &= ~0x40;
+    if (flags & 0x40)
+        flags &= ~0x40;
     int ret = recvfrom(s, buf, len, flags, from, fromlen);
-    if (ret == SOCKET_ERROR) {
+    if (ret == SOCKET_ERROR)
+    {
         errno = mapWSAErrorToErrno(WSAGetLastError());
     }
     log_info(">>> recvfrom EXIT: returning %d", ret);
@@ -317,7 +396,8 @@ extern "C" int bridgeSendto(SOCKET s, const char *buf, int len, int flags, const
     log_info(">>> sendto called: socket=%lld, len=%d", (long long)s, len);
     flags &= ~(0x4000 | 0x40);
     int ret = sendto(s, buf, len, flags, to, tolen);
-    if (ret == SOCKET_ERROR) {
+    if (ret == SOCKET_ERROR)
+    {
         errno = mapWSAErrorToErrno(WSAGetLastError());
     }
     log_info(">>> sendto EXIT: returning %d", ret);
@@ -327,14 +407,17 @@ extern "C" int bridgeSendto(SOCKET s, const char *buf, int len, int flags, const
 extern "C" int bridgeSetsockopt(SOCKET s, int level, int optname, const char *optval, int optlen)
 {
     log_info(">>> setsockopt called: socket=%lld, level=%d, optname=%d", (long long)s, level, optname);
-    
-    if (level == 1) {
-        level = 0xFFFF; 
-        if (optname == 2) optname = 0x0004;
+
+    if (level == 1)
+    {
+        level = 0xFFFF;
+        if (optname == 2)
+            optname = 0x0004;
     }
-    
+
     int ret = setsockopt(s, level, optname, optval, optlen);
-    if (ret == SOCKET_ERROR) {
+    if (ret == SOCKET_ERROR)
+    {
         errno = mapWSAErrorToErrno(WSAGetLastError());
     }
     log_info(">>> setsockopt EXIT: returning %d", ret);
@@ -344,14 +427,17 @@ extern "C" int bridgeSetsockopt(SOCKET s, int level, int optname, const char *op
 extern "C" int bridgeGetsockopt(SOCKET s, int level, int optname, char *optval, int *optlen)
 {
     log_info(">>> getsockopt called: socket=%lld, level=%d, optname=%d", (long long)s, level, optname);
-    
-    if (level == 1) {
+
+    if (level == 1)
+    {
         level = 0xFFFF;
-        if (optname == 2) optname = 0x0004;
+        if (optname == 2)
+            optname = 0x0004;
     }
-    
+
     int ret = getsockopt(s, level, optname, optval, optlen);
-    if (ret == SOCKET_ERROR) {
+    if (ret == SOCKET_ERROR)
+    {
         errno = mapWSAErrorToErrno(WSAGetLastError());
     }
     log_info(">>> getsockopt EXIT: returning %d", ret);
@@ -377,7 +463,7 @@ int NetworkBridge::bridgeGethostbyname_r(const char *name, void *ret, char *buf,
 }
 
 int NetworkBridge::bridgeGethostbyaddr_r(const void *addr, int len, int type, void *ret, char *buf, size_t buflen, void **result,
-                                        int *h_errnop)
+                                         int *h_errnop)
 {
     std::lock_guard<std::mutex> lock(g_net_mutex);
     struct hostent *he = gethostbyaddr((const char *)addr, len, type);
@@ -395,5 +481,16 @@ int NetworkBridge::bridgeGethostbyaddr_r(const void *addr, int len, int type, vo
     return 0;
 }
 
+extern "C" int bridgeGethostname(char *name, size_t namelen)
+{
+    // fallback to localhost if gethostname fails
+    if (name == nullptr || namelen == 0)
+    {
+        return -1;
+    }
+    strncpy(name, "localhost", namelen - 1);
+    name[namelen - 1] = '\0';
+    return 0;
+}
 
 #endif

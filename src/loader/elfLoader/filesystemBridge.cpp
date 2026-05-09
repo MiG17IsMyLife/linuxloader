@@ -1,8 +1,7 @@
 #if defined(_WIN32) || defined(__MINGW32__)
 #include "../redirections/filesystemShared.h"
 #include "filesystemBridge.hpp"
-// #include "libcbridge.h"
-#include "../redirections/libcShared.h"
+#include "libcBridge.hpp"
 #include "symbolResolver.hpp"
 #include "../log/log.h"
 #include <string>
@@ -21,9 +20,9 @@ static char g_dlErrorBuf[256];
 namespace FileSystemBridge
 {
 
-    void InitBridges()
+    void initBridges()
     {
-        log_info("Initializing File System Bridges...");
+        log_info("Initializing FileSystemBridge...");
 
         // Standard I/O functions
         MAP("fopen", sharedFopen);
@@ -43,6 +42,8 @@ namespace FileSystemBridge
         MAP("getc", bridgeGetc);
         MAP("ungetc", bridgeUngetc);
 
+        MAP("flock", LibcBridge::bridgeStubSuccess);
+
         // LFS (Large File Support) functions
         MAP("fopen64", sharedFopen);
         MAP("fseeko64", sharedFseek);
@@ -61,6 +62,11 @@ namespace FileSystemBridge
         MAP("open", sharedOpen);
         MAP("open64", sharedOpen);
         MAP("readlink", bridgeReadlink);
+        MAP("fdopen", bridgeFdopen);
+        MAP("setvbuf", bridgeSetvbuf);
+        MAP("writev", bridgeWritev);
+        MAP("readv", bridgeReadv);
+        MAP("dup", bridgeDup);
 
         // file IO
         MAP("fsync", bridgeFsync);
@@ -69,7 +75,7 @@ namespace FileSystemBridge
         MAP("access", bridgeAccess);
         MAP("chmod", bridgeChmod);
         MAP("chdir", bridgeChdir);
-        MAP("syslog", bridgeSyslog);
+
 
         MAP("ioctl", sharedIoctl);
         MAP("select", sharedSelect);
@@ -79,8 +85,11 @@ namespace FileSystemBridge
         MAP("opendir", bridgeOpendir);
         MAP("readdir", bridgeReaddir);
         MAP("closedir", bridgeClosedir);
-        MAP("realpath", bridgeRealpath);
+        MAP("clearerr", clearerr);
+
         MAP("unlink", bridgeUnlink);
+        MAP("remove", bridgeRemove);
+        MAP("rename", bridgeRename);
 
         MAP("stat", bridgeStat);
         MAP("fstat", bridgeFstat);
@@ -91,6 +100,7 @@ namespace FileSystemBridge
         MAP("__fxstat64", bridgeFxstat64);
         MAP("__xmknod", bridgeXmknod);
         MAP("fcntl", bridgeFcntl);
+        MAP("__lxstat64", bridgeLxstat64);
     }
 
     size_t bridgeFwrite(const void *ptr, size_t size, size_t count, FILE *stream)
@@ -152,6 +162,57 @@ namespace FileSystemBridge
         log_error("readlink not implemented for %s", path);
         return -1;
     }
+    
+    FILE* bridgeFdopen(int fd, const char* mode)
+    {
+        log_trace("Intercepted fdopen");
+        return fdopen(fd, mode);
+    }
+
+    int bridgeSetvbuf(FILE *stream, char *buf, int mode, size_t size)
+    {
+        log_trace("Intercepted setvbuf");
+        return setvbuf(stream, buf, mode, size);
+    }
+
+    size_t bridgeWritev(int fd, const struct iovec *iov, int iovcnt)
+    {
+        log_trace("Intercepted writev");
+        size_t total_written = 0;
+        for (int i = 0; i < iovcnt; ++i) {
+            int written = _write(fd, iov[i].iov_base, iov[i].iov_len);
+            if (written < 0) {
+                if (total_written == 0) return -1;
+                break;
+            }
+            total_written += written;
+            if ((size_t)written < iov[i].iov_len) break;
+        }
+        return total_written;
+    }
+
+    ssize_t bridgeReadv(int fd, const struct iovec *iov, int iovcnt)
+    {
+        log_trace("Intercepted readv");
+        ssize_t total_read = 0;
+        for (int i = 0; i < iovcnt; ++i) {
+            int bytes_read = _read(fd, iov[i].iov_base, iov[i].iov_len);
+            if (bytes_read < 0) {
+                if (total_read == 0) return -1;
+                break;
+            }
+            total_read += bytes_read;
+            if ((size_t)bytes_read < iov[i].iov_len) break;
+            if (bytes_read == 0) break; // EOF
+        }
+        return total_read;
+    }
+
+    int bridgeDup(int fd)
+    {
+        log_trace("Intercepted dup: %d", fd);
+        return dup(fd);
+    }
 
     extern "C" int bridgeFsync(int fd)
     {
@@ -188,17 +249,6 @@ namespace FileSystemBridge
     int bridgeChmod(const char *filename, int pmode)
     {
         return _chmod(filename, pmode);
-    }
-
-    int bridgeSyslog(int priority, const char *format, ...)
-    {
-        char buffer[1024];
-        va_list args;
-        va_start(args, format);
-        vsnprintf(buffer, sizeof(buffer), format, args);
-        va_end(args);
-        log_info("syslog: %s", buffer);
-        return 0;
     }
 
     int bridgeCreat(const char *pathname, int mode)
@@ -331,27 +381,6 @@ extern "C"
         return 0;
     }
 
-    char *bridgeRealpath(const char *path, char *resolved_path)
-    {
-        if (!path || !resolved_path)
-            return nullptr;
-
-        char winPath[MAX_PATH];
-        ConvertPath(winPath, path, MAX_PATH);
-
-        char *result = _fullpath(resolved_path, winPath, MAX_PATH);
-        if (!result)
-            return nullptr;
-
-        // Convert backslashes to forward slashes for Linux compatibility
-        for (char *p = result; *p; p++)
-        {
-            if (*p == '\\')
-                *p = '/';
-        }
-
-        return result;
-    }
 
     int bridgeUnlink(const char *pathname)
     {
@@ -360,6 +389,28 @@ extern "C"
             pathname += 1;
         }
         return _unlink(pathname);
+    }
+
+    int bridgeRemove(const char *pathname)
+    {
+        if (strncmp(pathname, "/home/disk1/rankingdata/", 25) == 0)
+        {
+            pathname += 11;
+            char winPath[MAX_PATH];
+            ConvertPath(winPath, pathname, MAX_PATH);
+            return remove(winPath);
+        }
+        return remove(pathname);
+    }
+
+    int bridgeRename(const char *oldpath, const char *newpath)
+    {
+        log_debug("rename(\" % s\", \" % s\")", oldpath, newpath);
+        char winOld[MAX_PATH];
+        char winNew[MAX_PATH];
+        ConvertPath(winOld, oldpath, MAX_PATH);
+        ConvertPath(winNew, newpath, MAX_PATH);
+        return rename(winOld, winNew);
     }
 
     static void CopyStatVer3(const struct _stat64 &src, void *dst_ptr)
@@ -604,6 +655,7 @@ extern "C"
         log_trace("Intercepted ungetc: %d %p", c, stream);
         return ungetc(c, stream);
     }
+
 }
 
 #endif

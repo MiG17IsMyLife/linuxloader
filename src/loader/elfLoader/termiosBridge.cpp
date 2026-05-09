@@ -23,6 +23,9 @@ namespace TermiosBridge
         MAP("cfsetispeed", bridgeCfsetispeed);
         MAP("cfsetospeed", bridgeCfsetospeed);
         MAP("cfsetspeed", bridgeCfsetospeed);
+        MAP("cfmakeraw", LibcBridge::bridgeStubSuccess);
+
+        MAP("isatty", LibcBridge::bridgeStubSuccess);
     }
 
     static std::map<int, linux_termios> g_termios_state;

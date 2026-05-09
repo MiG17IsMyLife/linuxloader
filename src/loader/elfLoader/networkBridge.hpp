@@ -23,8 +23,13 @@ namespace NetworkBridge
     extern "C" int bridgeSendto(SOCKET s, const char *buf, int len, int flags, const struct sockaddr *to, int tolen);
     extern "C" int bridgeSetsockopt(SOCKET s, int level, int optname, const char *optval, int optlen);
     extern "C" int bridgeGetsockopt(SOCKET s, int level, int optname, char *optval, int *optlen);
-    extern "C" int bridgeShutdown(SOCKET s, int how);   
+    extern "C" int bridgeShutdown(SOCKET s, int how);
     int bridgeGethostbyname_r(const char *name, void *ret, char *buf, size_t buflen, void **result, int *h_errnop);
     int bridgeGethostbyaddr_r(const void *addr, int len, int type, void *ret, char *buf, size_t buflen, void **result,
                                         int *h_errnop);
+    extern "C" int bridgeGethostname(char *name, size_t namelen);
+    extern "C" uint16_t bridgeNtohs(uint16_t netshort);
+    extern "C" uint16_t bridgeHtons(uint16_t hostshort);
+    extern "C" uint32_t bridgeNtohl(uint32_t netlong);
+    extern "C" uint32_t bridgeHtonl(uint32_t hostlong);
 } // namespace NetworkBridge

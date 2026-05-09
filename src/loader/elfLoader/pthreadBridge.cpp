@@ -18,34 +18,51 @@ namespace PthreadBridge
         int emuSemTrywait(void *sem);
         int emuSemPost(void *sem);
         int emuSemGetValue(void *sem, int *sval);
+        void* emuSemOpen(const char* name, int oflag, int mode, unsigned int value);
+        int emuSemClose(void* sem);
+        int emuSemUnlink(const char* name);
 
-        int my_sem_init(void *sem, int pshared, unsigned int value)
+
+        int bridge_sem_init(void *sem, int pshared, unsigned int value)
         {
             return emuSemInit(sem, pshared, value);
         }
-        int my_sem_destroy(void *sem)
+        int bridge_sem_destroy(void *sem)
         {
             return emuSemDestroy(sem);
         }
-        int my_sem_wait(void *sem)
+        int bridge_sem_wait(void *sem)
         {
             return emuSemWait(sem);
         }
-        int my_sem_trywait(void *sem)
+        int bridge_sem_trywait(void *sem)
         {
             return emuSemTrywait(sem);
         }
-        int my_sem_post(void *sem)
+        int bridge_sem_post(void *sem)
         {
             return emuSemPost(sem);
         }
-        int my_sem_getvalue(void *sem, int *sval)
+        int bridge_sem_getvalue(void *sem, int *sval)
         {
             return emuSemGetValue(sem, sval);
         }
+        void* bridge_sem_open(const char* name, int oflag, int mode, unsigned int value)
+        {
+            return emuSemOpen(name, oflag, mode, value);
+        }
+        int bridge_sem_close(void* sem)
+        {
+            return emuSemClose(sem);
+        }
+        int bridge_sem_unlink(const char* name)
+        {
+            return emuSemUnlink(name);
+        }
+
     }
 
-    void InitBridges()
+    void initBridges()
     {
         log_info("Initializing Pthread Emulation...");
 
@@ -132,12 +149,16 @@ namespace PthreadBridge
         MAP("pthread_spin_lock", PthreadEmu::pthreadSpinLock);
         MAP("pthread_spin_trylock", PthreadEmu::pthreadSpinTrylock);
         MAP("pthread_spin_unlock", PthreadEmu::pthreadSpinUnlock);
-        MAP("sem_init", my_sem_init);
-        MAP("sem_destroy", my_sem_destroy);
-        MAP("sem_wait", my_sem_wait);
-        MAP("sem_trywait", my_sem_trywait);
-        MAP("sem_post", my_sem_post);
-        MAP("sem_getvalue", my_sem_getvalue);
+        MAP("sem_init", bridge_sem_init);
+        MAP("sem_destroy", bridge_sem_destroy);
+        MAP("sem_wait", bridge_sem_wait);
+        MAP("sem_trywait", bridge_sem_trywait);
+        MAP("sem_post", bridge_sem_post);
+        MAP("sem_getvalue", bridge_sem_getvalue);
+        MAP("sem_open", bridge_sem_open);
+        MAP("sem_close", bridge_sem_close);
+        MAP("sem_unlink", bridge_sem_unlink);
+
 
         MAP("pthread_once", bridgePthreadOnce);
 

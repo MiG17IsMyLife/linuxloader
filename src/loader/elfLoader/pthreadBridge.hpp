@@ -5,7 +5,7 @@
 
 namespace PthreadBridge
 {
-    void InitBridges();
+    void initBridges();
 
     int bridgePthreadOnce(int *once_control, void (*init_routine)(void));
 }

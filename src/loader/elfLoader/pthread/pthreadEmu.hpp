@@ -171,6 +171,10 @@ extern "C" {
     int emuSemTimedwait(void* sem, const struct timespec* abs_timeout);
     int emuSemPost(void* sem);
     int emuSemGetValue(void* sem, int* sval);
+    void* emuSemOpen(const char* name, int oflag, int mode, unsigned int value);
+    int emuSemClose(void* sem);
+    int emuSemUnlink(const char* name);
+
 
     // Cleanup function for semaphores (called by PthreadEmu::Shutdown)
     void SemaphoreCleanup();

@@ -19,6 +19,8 @@ static const int32_t *g_ctype_toupper_ptr = g_ctype_toupper + 128;
 
 static bool g_ctype_initialized = false;
 
+static void InitLinuxCtype();
+
 namespace GccBridge
 {
     void initBridges()
@@ -40,12 +42,36 @@ namespace GccBridge
 
         MAP("tolower", tolower);
         MAP("toupper", toupper);
+        MAP("towlower", towlower);
+        MAP("towupper", towupper);
 
         InitLinuxCtype();
 
         MAP("__ctype_tolower", &g_ctype_tolower_ptr);
         MAP("__ctype_toupper", &g_ctype_toupper_ptr);
         MAP("__ctype_b", &g_ctype_b_ptr);
+
+        MAP("isprint", isprint);
+        MAP("isupper", isupper);
+        MAP("islower", islower);
+        MAP("isdigit", isdigit);
+        MAP("isalnum", isalnum);
+        MAP("isspace", isspace);
+        MAP("iscntrl", iscntrl);
+        MAP("ispunct", ispunct);
+        MAP("isxdigit", isxdigit);
+        MAP("isblank", isblank);
+        MAP("iswprint", iswprint);
+        MAP("iswupper", iswupper);
+        MAP("iswlower", iswlower);
+        MAP("iswdigit", isdigit);
+        MAP("iswalnum", iswalnum);
+        MAP("iswspace", iswspace);
+        MAP("iswcntrl", iswcntrl);
+        MAP("iswpunct", iswpunct);
+        MAP("iswxdigit", iswxdigit);
+        MAP("iswblank", iswblank);
+        MAP("iswctype", iswctype);
     }
 
     extern "C"

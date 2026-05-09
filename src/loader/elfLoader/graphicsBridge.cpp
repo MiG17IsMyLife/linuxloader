@@ -17,7 +17,7 @@ extern "C" {
 namespace GraphicsBridge
 {
 
-    void InitBridges()
+    void initBridges()
     {
         log_info("Initializing Graphics Bridges (OpenGL/GLX/X11)...");
 

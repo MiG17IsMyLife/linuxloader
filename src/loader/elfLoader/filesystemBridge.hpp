@@ -137,9 +137,14 @@ struct linux_stat64_safe
 #define LINUX_S_IFCHR 0020000
 #define LINUX_S_IFIFO 0010000
 
+struct iovec {
+    void  *iov_base;
+    size_t iov_len;
+};
+
 namespace FileSystemBridge
 {
-    void InitBridges();
+    void initBridges();
 
     // MSYS/Windows compatible file operations intercepting Linux calls
     size_t bridgeFwrite(const void *ptr, size_t size, size_t count, FILE *stream);
@@ -150,13 +155,18 @@ namespace FileSystemBridge
     int bridgeFileno(FILE *stream);
     long int bridgeLseek(int fd, long int offset, int whence);
     int bridgeReadlink(const char *path, char *buf, size_t bufsiz);
+    FILE* bridgeFdopen(int fd, const char* mode);
+    int bridgeSetvbuf(FILE *stream, char *buf, int mode, size_t size);
+    size_t bridgeWritev(int fd, const struct iovec *iov, int iovcnt);
+    ssize_t bridgeReadv(int fd, const struct iovec *iov, int iovcnt);
+    int bridgeDup(int fd);
     extern "C" int bridgeFsync(int fd);
     extern "C" int bridgeFdatasync(int fd);
     extern "C" void bridgeSync(void);
     int bridgeAccess(const char *pathname, int mode);
     int bridgeChdir(const char *path);
     int bridgeChmod(const char *filename, int pmode);
-    int bridgeSyslog(int priority, const char *format, ...);
+
     int bridgeCreat(const char *pathname, int mode);
     char *bridgeGetcwd(char *buf, size_t size);
 } // namespace FileSystemBridge
@@ -166,17 +176,21 @@ extern "C"
     int bridgeFputc(int c, FILE *stream);
     int bridgeGetc(FILE *stream);
     int bridgeUngetc(int c, FILE *stream);
+
     void *bridgeOpendir(const char *name);
     struct linux_dirent *bridgeReaddir(void *dirp);
     int bridgeClosedir(void *dirp);
-    char *bridgeRealpath(const char *path, char *resolved_path);
+
     int bridgeUnlink(const char *pathname);
+    int bridgeRemove(const char *pathname);
+    int bridgeRename(const char *oldpath, const char *newpath);
 
     int bridgeFstat(int fd, struct linux_stat64 *buf);
     int bridgeStat(const char *path, struct linux_stat64 *buf);
     int bridgeXstat(int ver, const char *path, struct linux_stat *buf);
     int bridgeXstat64(int ver, const char *path, struct linux_stat64 *buf);
     int bridgeLxstat(int ver, const char *path, struct linux_stat *buf);
+    int bridgeLxstat64(int ver, const char *path, struct linux_stat64 *buf);
     int bridgeFxstat(int ver, int fd, struct linux_stat *buf);
     int bridgeFxstat64(int ver, int fd, struct linux_stat64 *buf);
     int bridgeXmknod(int ver, const char *path, unsigned int mode, void *dev);

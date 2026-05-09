@@ -41,6 +41,7 @@ public:
     static void* customMemalign(size_t alignment, size_t size);
     static int customPosixMemalign(void **ptr, size_t alignment, size_t size);
     static void* customMemmove(void* dest, const void* src, size_t n);
+    static wchar_t* customWmemmove(wchar_t* dest, const wchar_t* src, size_t n);
     static int customStrcoll(const char *s1, const char *s2);
     static size_t customStrxfrm(char *dest, const char *src, size_t n);
     static char *customStrndup(const char *src, size_t size);

@@ -152,6 +152,7 @@ elseif(WIN32 OR MINGW OR CMAKE_C_COMPILER MATCHES "mingw")
 
     # Increase stack size to 4MB to prevent stack overflow on startup
     target_link_options(${PROJECT_NAME} PRIVATE
+        -s
         -Wl,--stack,4194304
         -Wl,--large-address-aware
     )

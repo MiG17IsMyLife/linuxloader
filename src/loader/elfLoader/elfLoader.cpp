@@ -368,8 +368,8 @@ bool ElfLoader::LoadDependencies()
 
         SymbolResolver::GetInstance().RegisterLibrary("libz.so.1", "zlib1.dll");
 
-        SymbolResolver::GetInstance().RegisterLibrary("libc.so", "msys-2.0.dll");
-        SymbolResolver::GetInstance().RegisterLibrary("libc.so.6", "msys-2.0.dll");
+        SymbolResolver::GetInstance().RegisterLibrary("libc.so", "INTERNAL");
+        SymbolResolver::GetInstance().RegisterLibrary("libc.so.6", "INTERNAL");
 
         SymbolResolver::GetInstance().RegisterLibrary("libpthread.so", "INTERNAL");
         SymbolResolver::GetInstance().RegisterLibrary("libpthread.so.0", "INTERNAL");
@@ -400,6 +400,9 @@ bool ElfLoader::LoadDependencies()
         SymbolResolver::GetInstance().RegisterLibrary("libalpb.so", "INTERNAL");
         SymbolResolver::GetInstance().RegisterLibrary("libbdlog.so", "INTERNAL");
         SymbolResolver::GetInstance().RegisterLibrary("libsama.so", "INTERNAL");
+        SymbolResolver::GetInstance().RegisterLibrary("libposixtime.so", "INTERNAL");
+        SymbolResolver::GetInstance().RegisterLibrary("libposixtime.so.1", "INTERNAL");
+        SymbolResolver::GetInstance().RegisterLibrary("libposixtime.so.2.4", "INTERNAL");
     }
 
     for (Elf_Half i = 0; i < m_Elfio->sections.size(); ++i)

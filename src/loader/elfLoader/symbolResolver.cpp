@@ -99,6 +99,7 @@ SymbolResolver::SymbolResolver()
     m_VTables["realloc"] = reinterpret_cast<void *>(MemoryManager::customRealloc);
     m_VTables["free"] = reinterpret_cast<void *>(MemoryManager::customFree);
     m_VTables["memmove"] = reinterpret_cast<void *>(MemoryManager::customMemmove);
+    m_VTables["wmemmove"] = reinterpret_cast<void *>(MemoryManager::customWmemmove);
     m_VTables["memalign"] = reinterpret_cast<void *>(MemoryManager::customMemalign);
     m_VTables["posix_memalign"] = reinterpret_cast<void *>(MemoryManager::customPosixMemalign);
     m_VTables["strndup"] = reinterpret_cast<void *>(MemoryManager::customStrndup);
@@ -109,6 +110,7 @@ SymbolResolver::SymbolResolver()
     m_VTables["memcpy"] = reinterpret_cast<void *>(memcpy);
     m_VTables["memset"] = reinterpret_cast<void *>(memset);
     m_VTables["memcmp"] = reinterpret_cast<void *>(memcmp);
+    m_VTables["memchr"] = reinterpret_cast<void *>(memchr);
     m_VTables["strlen"] = reinterpret_cast<void *>(strlen);
     m_VTables["strcpy"] = reinterpret_cast<void *>(strcpy);
     m_VTables["strncpy"] = reinterpret_cast<void *>(sharedStrncpy);
@@ -117,6 +119,24 @@ SymbolResolver::SymbolResolver()
     m_VTables["strchr"] = reinterpret_cast<void *>(strchr);
     m_VTables["strrchr"] = reinterpret_cast<void *>(strrchr);
     m_VTables["strstr"] = reinterpret_cast<void *>(strstr);
+    m_VTables["strtol"] = reinterpret_cast<void *>(strtol);
+    m_VTables["strtod"] = reinterpret_cast<void *>(strtod);
+    m_VTables["strerror"] = reinterpret_cast<void *>(strerror);
+    m_VTables["strtok"] = reinterpret_cast<void *>(strtok);
+    m_VTables["strtok_r"] = reinterpret_cast<void *>(strtok_r);
+    m_VTables["strncat"] = reinterpret_cast<void *>(strncat);
+    m_VTables["strcat"] = reinterpret_cast<void *>(strcat);
+    m_VTables["strpbrk"] = reinterpret_cast<void *>(strpbrk);
+    m_VTables["strcspn"] = reinterpret_cast<void *>(strcspn);
+    m_VTables["strspn"] = reinterpret_cast<void *>(strspn);   
+    m_VTables["strcasecmp"] = reinterpret_cast<void *>(strcasecmp);
+    m_VTables["strncasecmp"] = reinterpret_cast<void *>(strncasecmp);
+    
+    m_VTables["mblen"] = reinterpret_cast<void *>(mblen); // mblen is multi-byte character length, doesn't use wchar_t
+    m_VTables["putc"] = reinterpret_cast<void *>(putc);
+    m_VTables["putchar"] = reinterpret_cast<void *>(putchar);
+    m_VTables["fputc"] = reinterpret_cast<void *>(fputc);
+
 }
 
 void SymbolResolver::InitSearchPaths(const std::string &libraryPathParam, const std::string &gameElfPath)

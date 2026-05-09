@@ -30,7 +30,6 @@ namespace GccBridge
     const int32_t *GetCtypeToUpperPtr();
 } // namespace GccBridge
 
-static void InitLinuxCtype();
 
 extern "C"
 {
@@ -41,8 +40,7 @@ extern "C"
     const int32_t **__ctype_tolower_loc(void);
     const int32_t **__ctype_toupper_loc(void);
     size_t __ctype_get_mb_cur_max();
-    const unsigned char **__locale_ctype_ptr(void);
-    const void *bridge_locale_ctype_ptr(void);
+
 
     void __assert_fail(const char *assertion, const char *file, unsigned int line, const char *function);
     int *__errno_location();
