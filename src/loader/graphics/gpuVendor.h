@@ -1,1 +1,1 @@
-void getGPUVendor();
+int getGPUVendorID();

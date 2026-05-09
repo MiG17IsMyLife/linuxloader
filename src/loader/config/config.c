@@ -197,6 +197,7 @@ void setDefaultValues(EmulatorConfig *cfg)
     cfg->blackBorderPercentage = 0.0f;
     cfg->inputMode = 1;
     cfg->enableCrosshairs = 0;
+    cfg->gsevoAlwaysCrosshair = 0;
     strcpy(cfg->p1CrossHairPath, "");
     strcpy(cfg->p2CrossHairPath, "");
     cfg->customCrossHairWidth = 64;
@@ -358,7 +359,6 @@ void applyIniConfig(EmulatorConfig *config, const IniConfig *ini)
     getString(ini, "Paths", "LIBCG_PATH", config->libCgPath, MAX_PATH_LENGTH);
 
     // [Graphics]
-    config->GPUVendor = getInt(ini, "Graphics", "GPU_VENDOR", config->GPUVendor);
     config->hummerFlickerFix = getInt(ini, "Graphics", "HUMMER_FLICKER_FIX", config->hummerFlickerFix);
     config->outrunLensGlareEnabled = getInt(ini, "Graphics", "OUTRUN_LENS_GLARE_ENABLED", config->outrunLensGlareEnabled);
     config->fpsLimiter = getInt(ini, "Graphics", "FPS_LIMITER_ENABLED", config->fpsLimiter);
@@ -393,6 +393,7 @@ void applyIniConfig(EmulatorConfig *config, const IniConfig *ini)
     getString(ini, "CrossHairs", "P2_CROSSHAIR_PATH", config->p2CrossHairPath, MAX_PATH_LENGTH);
     config->customCrossHairWidth = getInt(ini, "CrossHairs", "CUSTOM_CROSSHAIRS_WIDTH", config->customCrossHairWidth);
     config->customCrossHairHeight = getInt(ini, "CrossHairs", "CUSTOM_CROSSHAIRS_HEIGHT", config->customCrossHairHeight);
+    config->gsevoAlwaysCrosshair = getInt(ini, "CrossHairs", "GSEVO_ALWAYS_CROSSHAIR", config->gsevoAlwaysCrosshair);
 
     config->showDebugMessages = getInt(ini, "System", "DEBUG_MSGS", config->showDebugMessages);
     config->useAltJvsPassthrough = getInt(ini, "System", "USE_ALT_JVS_PASSTHROUGH", config->useAltJvsPassthrough);

@@ -84,8 +84,6 @@ int createDefaultIni(const char *filePath)
 
     // [Graphics]
     fprintf(file, "[Graphics]\n");
-    fprintf(file, "# Set the GPU vendor (0 = Autodetect / 1 = NVidia / 2 = AMD / 3 = ATI / 4 = Intel)\n");
-    fprintf(file, "GPU_VENDOR = %d\n\n", defaults.GPUVendor);
     fprintf(file, "# Set to true if you experience flickering in hummer\n");
     fprintf(file, "HUMMER_FLICKER_FIX = %s\n\n", defaults.hummerFlickerFix ? "true" : "false");
     fprintf(file, "# Set to false if you don't want to limit the FPS\n");
@@ -144,6 +142,8 @@ int createDefaultIni(const char *filePath)
     fprintf(file, "CUSTOM_CROSSHAIRS_WIDTH = %d\n\n", defaults.customCrossHairWidth);
     fprintf(file, "# Set the height of the Crosshair image\n");
     fprintf(file, "CUSTOM_CROSSHAIRS_HEIGHT = %d\n\n", defaults.customCrossHairHeight);
+    fprintf(file, "# Set to true to always enable Crosshairs in Ghost Squad Evolution\n");
+    fprintf(file, "GSEVO_ALWAYS_CROSSHAIR = %s\n\n", defaults.gsevoAlwaysCrosshair ? "true" : "false");
 
     // [System]
     fprintf(file, "[System]\n");

@@ -66,20 +66,3 @@ int getGPUVendorID()
         vendorId = UNKNOWN_GPU;
     return vendorId;
 }
-
-void getGPUVendor()
-{
-    EmulatorConfig *config = getConfig();
-    if (config->GPUVendor == AUTO_DETECT_GPU)
-        config->GPUVendor = getGPUVendorID();
-    else if (config->GPUVendor == NVIDIA_GPU)
-        config->GPUVendorString = "NVIDIA";
-    else if (config->GPUVendor == AMD_GPU)
-        config->GPUVendorString = "AMD";
-    else if (config->GPUVendor == INTEL_GPU)
-        config->GPUVendorString = "Intel";
-    else if (config->GPUVendor == ATI_GPU)
-        config->GPUVendorString = "ATI";
-    else
-        config->GPUVendorString = "Unknown";
-}

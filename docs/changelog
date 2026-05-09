@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.3]
+### Added
+    - A config option to always enable crosshairs in Ghost Squad Evolution.
+    - Removed GPU Vendor setting from ini as it is confising for some people. Autodetect works fine.
+### Fixed
+    - A missing source file.
+
 ## [3.0.2]
 ### Added
     - Removed MSYS2 dependency as it was causing crashes (This potentially fixed the silent crash on start for some users).

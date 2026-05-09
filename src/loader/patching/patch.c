@@ -469,7 +469,8 @@ int initPatch()
                 detourFunction(0x0804c334, gl_ProgramStringARB);
             }
             // Always Crosshairs
-            detourFunction(0x080e4e3a, stubReturn);
+            if (config->gsevoAlwaysCrosshair)
+                detourFunction(0x080e4e3a, stubReturn);
         }
         break;
         case HARLEY_DAVIDSON_SBRG:

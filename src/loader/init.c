@@ -56,7 +56,13 @@ void initMain(char *configPath, char *controlsPath)
 
     initFpsLimiter();
 
-    getGPUVendor();
+    getConfig()->GPUVendor = getGPUVendorID();
+
+    if (getConfig()->GPUVendor == ERROR_GPU)
+    {
+        log_error("Failed to detect GPU\nUsing default values\n");
+        getConfig()->GPUVendor = UNKNOWN_GPU;
+    }
 
     if (MH_Initialize() != MH_OK)
     {
