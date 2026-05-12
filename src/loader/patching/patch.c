@@ -479,7 +479,7 @@ int initPatch()
             else if (config->gsevoCrosshairAlwaysOff)
             {
                 // Built-in CrossHairs Always Off
-                detourFunction(0x080e5744, stubRetZero);
+                detourFunction(0x080e4e18, stubRetZero);
             }
         }
         break;
