@@ -254,17 +254,6 @@ int cg_GLIsProfileSupported(int profile)
     return 0;
 }
 
-int cg_GLIsProfileSupportedATI(int profile)
-{
-    switch (profile)
-    {
-        case 6151:
-        case 7001:
-            return 1;
-    }
-    return 0;
-}
-
 int cg_GLGetLatestProfile(int profileClass)
 {
     int profile;

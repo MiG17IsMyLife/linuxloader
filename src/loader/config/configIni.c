@@ -143,7 +143,9 @@ int createDefaultIni(const char *filePath)
     fprintf(file, "# Set the height of the Crosshair image\n");
     fprintf(file, "CUSTOM_CROSSHAIRS_HEIGHT = %d\n\n", defaults.customCrossHairHeight);
     fprintf(file, "# Set to true to always enable Crosshairs in Ghost Squad Evolution\n");
-    fprintf(file, "GSEVO_ALWAYS_CROSSHAIR = %s\n\n", defaults.gsevoAlwaysCrosshair ? "true" : "false");
+    fprintf(file, "GSEVO_CROSSHAIR_ALWAYS_ON = %s\n\n", defaults.gsevoCrosshairAlwaysOn ? "true" : "false");
+    fprintf(file, "# Set to true to always disable Crosshairs in Ghost Squad Evolution\n");
+    fprintf(file, "GSEVO_CROSSHAIR_ALWAYS_OFF = %s\n\n", defaults.gsevoCrosshairAlwaysOff ? "true" : "false");
 
     // [System]
     fprintf(file, "[System]\n");

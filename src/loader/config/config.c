@@ -197,7 +197,8 @@ void setDefaultValues(EmulatorConfig *cfg)
     cfg->blackBorderPercentage = 0.0f;
     cfg->inputMode = 1;
     cfg->enableCrosshairs = 0;
-    cfg->gsevoAlwaysCrosshair = 0;
+    cfg->gsevoCrosshairAlwaysOn = 0;
+    cfg->gsevoCrosshairAlwaysOff = 0;
     strcpy(cfg->p1CrossHairPath, "");
     strcpy(cfg->p2CrossHairPath, "");
     cfg->customCrossHairWidth = 64;
@@ -393,7 +394,8 @@ void applyIniConfig(EmulatorConfig *config, const IniConfig *ini)
     getString(ini, "CrossHairs", "P2_CROSSHAIR_PATH", config->p2CrossHairPath, MAX_PATH_LENGTH);
     config->customCrossHairWidth = getInt(ini, "CrossHairs", "CUSTOM_CROSSHAIRS_WIDTH", config->customCrossHairWidth);
     config->customCrossHairHeight = getInt(ini, "CrossHairs", "CUSTOM_CROSSHAIRS_HEIGHT", config->customCrossHairHeight);
-    config->gsevoAlwaysCrosshair = getInt(ini, "CrossHairs", "GSEVO_ALWAYS_CROSSHAIR", config->gsevoAlwaysCrosshair);
+    config->gsevoCrosshairAlwaysOn = getInt(ini, "CrossHairs", "GSEVO_CROSSHAIR_ALWAYS_ON", config->gsevoCrosshairAlwaysOn);
+    config->gsevoCrosshairAlwaysOff = getInt(ini, "CrossHairs", "GSEVO_CROSSHAIR_ALWAYS_OFF", config->gsevoCrosshairAlwaysOff);
 
     config->showDebugMessages = getInt(ini, "System", "DEBUG_MSGS", config->showDebugMessages);
     config->useAltJvsPassthrough = getInt(ini, "System", "USE_ALT_JVS_PASSTHROUGH", config->useAltJvsPassthrough);
@@ -499,7 +501,7 @@ int initConfig(const char *configFilePath)
     config.crc32 = partialElfCrc;
     if (detectGame(config.crc32) != 0)
     {
-        log_warn("Unsure what game with CRC 0x%X is. Please submit this new game to the GitHub repository: "
+        log_error("Unsure what game with CRC 0x%X is. Please submit this new game to the GitHub repository: "
                  "https://github.com/lindbergh-loader/lindbergh-loader/issues/"
                  "new?title=Please+add+new+game+0x%X&body=I+tried+to+launch+the+following+game:\n",
                  config.crc32, config.crc32);

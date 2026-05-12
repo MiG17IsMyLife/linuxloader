@@ -74,7 +74,7 @@ void *MemoryManager::AllocateExecutable(size_t size, void *requestedAddr)
 
         if (canUse)
         {
-            log_warn("AllocateExecutable: Using taken-over memory at %p (%zu bytes)", requestedAddr, size);
+            log_info("AllocateExecutable: Using taken-over memory at %p (%zu bytes)", requestedAddr, size);
             ptr = requestedAddr;
         }
     }

@@ -421,7 +421,6 @@ void *SymbolResolver::ResolveSymbol(const std::string &symbolName, std::string *
     log_trace("Resolving symbol: %s", symbolName.c_str());
     void *resolvedAddr = nullptr;
     void *originalAddr = nullptr;
-    bool msysResolved = false;
 
     if (strncmp(symbolName.c_str(), "__gmon_start__", 14) == 0 || strncmp(symbolName.c_str(), "_ITM_deregisterTMCloneTable", 27) == 0 ||
         strncmp(symbolName.c_str(), "_ITM_registerTMCloneTable", 27) == 0 || strncmp(symbolName.c_str(), "_Jv_RegisterClasses", 19) == 0 ||
@@ -488,8 +487,6 @@ void *SymbolResolver::ResolveSymbol(const std::string &symbolName, std::string *
                         std::string modName = basename ? basename + 1 : path;
                         if (!resolvedAddr && outModuleName)
                             *outModuleName = modName;
-                        if (modName.find("msys-2.0") != std::string::npos)
-                            msysResolved = true;
                     }
                     else if (!resolvedAddr && outModuleName)
                     {
@@ -535,7 +532,7 @@ void *SymbolResolver::ResolveSymbol(const std::string &symbolName, std::string *
         return originalAddr;
     }
 
-    log_warn("Symbol not found: %s. Generating crash stub.", symbolName.c_str());
+    log_info("Symbol not found: %s. Generating crash stub.", symbolName.c_str());
     if (outModuleName)
         *outModuleName = "UNRESOLVED_STUB";
     return CreateUnresolvedStub(symbolName);
@@ -573,6 +570,7 @@ void bridgeLoadNeededLibrary(const char *filename)
     loadingNeededLibrary = true;
     SymbolResolver::GetInstance().LoadNeededLibrary(filename);
     SymbolResolver::GetInstance().ProcessAllRelocations();
+    SymbolResolver::GetInstance().PatchAllSOs();
     SymbolResolver::GetInstance().RunAllInits();
 }
 
@@ -586,6 +584,16 @@ bool SymbolResolver::ProcessAllRelocations()
         }
     }
     return true;
+}
+
+void SymbolResolver::PatchAllSOs()
+{
+    for (auto &patch : m_PendingSOPatches)
+    {
+        log_info("Applying deferred SO patch: base=0x%08X path=%s", (uint32_t)patch.first, patch.second.c_str());
+        patchSO(patch.first, patch.second.c_str());
+    }
+    m_PendingSOPatches.clear();
 }
 
 bool SymbolResolver::RunAllInits()
@@ -633,7 +641,7 @@ void *SymbolResolver::ResolveSymbolInSharedLibs(const std::string &symbolName)
         return vtableIt->second;
     }
 
-    log_warn("ResolveSymbolInSharedLibs: '%s' not found in any shared library", symbolName.c_str());
+    log_info("ResolveSymbolInSharedLibs: '%s' not found in any shared library", symbolName.c_str());
     return nullptr;
 }
 

@@ -75,7 +75,7 @@ void initBridges()
 
 int main(int argc, char *argv[], char *envp[])
 {
-    logSetMinLevel(LOG_FATAL);
+    logSetMinLevel(LOG_WARN);
 
     char command[MAX_PATH_LENGTH] = {0};
     char originalDir[MAX_PATH_LENGTH] = {0};
@@ -132,9 +132,8 @@ int main(int argc, char *argv[], char *envp[])
 
     uint8_t *baseAddr = (uint8_t *)loader.GetBaseAddress();
     if (baseAddr)
-    {
         partialElfCrc = getCrc32Mem(baseAddr + 10, 0x4000);
-    }
+
     log_debug("Initializing main...");
     initMain(configPath, controlsPath);
 

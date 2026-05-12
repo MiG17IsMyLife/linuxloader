@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.5]
+### Added
+    - Option to always disable Crosshairs in Ghost Squad Evolution.
+    - Added another texture filter for custom Crosshairs in Ghost Squad Evolution to prevent black background.
+    - Added some warning messages.
+    - Approved PR from JC to support float vvalues for Sinden light guns borders.
+### Fixed
+    - Fixed Crosshair disappearing in Ghost Squad Evolution after continue.
+    - Fixed a "bug" in basename functions that would crash 2Spicy in Windows.
+    - Fixed some redundant function calls in ElfLoader.
+
 ## [3.0.4]
 ### Added
 ### Fixed

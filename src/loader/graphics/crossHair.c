@@ -373,7 +373,7 @@ void renderGsEvoCrosshairs(void)
     GLint texFormat = 0;
     glad_glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT, &texFormat);
 
-    if (texFormat == 0x1908 || texFormat == 0x1)
+    if (texFormat == 0x1908 || texFormat == 0x1 || texFormat == 0x8051)
         return;
 
     glad_glPushAttrib(GL_ALL_ATTRIB_BITS);

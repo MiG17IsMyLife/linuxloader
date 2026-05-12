@@ -16,6 +16,7 @@
 #define GL_GLEXT_PROTOTYPES
 #include <sys/stat.h>
 
+#include "../mainShared.h"
 #include "../hardware/lindbergh/cardReader.h"
 #include "../config/config.h"
 #include "../hardware/lindbergh/securityBoard.h"
@@ -193,32 +194,6 @@ int or2snprintf(char *s, size_t n, const char *format, ...)
     return ret;
 }
 
-// printf hook, used by OR2
-int patchedPrintf(char *format, ...)
-{
-    if (format == NULL)
-        return 0;
-
-    va_list args;
-    va_start(args, format);
-    int ret = logVA_game(format, args);
-    va_end(args);
-
-    return ret;
-}
-
-// puts hook, used by OR2
-int patchedPuts(char *s)
-{
-    if (s == NULL)
-        return 0;
-
-    // Puts appends a new line by default, we add it ourselves
-    int ret = log_game("%s\n", s);
-
-    return ret;
-}
-
 extern bool gTriggerInsertKey;
 int idCardSize = 0;
 bool idTwoDigitsCardCount = false;
@@ -233,6 +208,32 @@ bool checkTrgOn(int param_1, long param_2)
     }
     return false;
 }
+
+#ifdef _WIN32
+uint32_t bridgeGettid(void)
+{
+    return _getpid();
+}
+
+int patchSO(uintptr_t base, const char *soPath)
+{
+    switch (gId)
+    {
+        case GHOST_SQUAD_EVOLUTION_SBNJ:
+        {
+            if (strstr(myBasename((char *)soPath), "snd_util.so"))
+            {
+                replaceCallAtAddress(base + 0x671F2, bridgeGettid);
+                replaceCallAtAddress(base + 0x67255, bridgeGettid);
+            }
+        }
+        break;
+        default:
+            break;
+    }
+    return 0;
+}
+#endif
 
 int initPatch()
 {
@@ -468,9 +469,18 @@ int initPatch()
                 gsEvoElfShaderPatcher();
                 detourFunction(0x0804c334, gl_ProgramStringARB);
             }
-            // Always Crosshairs
-            if (config->gsevoAlwaysCrosshair)
+            
+            if (config->gsevoCrosshairAlwaysOn)
+            {
+                // Built-in CrossHairs Always On
                 detourFunction(0x080e4e3a, stubReturn);
+                detourFunction(0x080e4e00, stubReturn);
+            }
+            else if (config->gsevoCrosshairAlwaysOff)
+            {
+                // Built-in CrossHairs Always Off
+                detourFunction(0x080e5744, stubRetZero);
+            }
         }
         break;
         case HARLEY_DAVIDSON_SBRG:
@@ -2339,9 +2349,6 @@ int initPatch()
                 setVariable(0x0893a4d8, 2); // amSysDataDebugLevel
                 setVariable(0x0893a4e0, 2); // bcLibDebugLevel
             }
-            // Output/logs
-            detourFunction(0x0804c9a8, patchedPuts);
-            detourFunction(0x0804cfe8, patchedPrintf);
             // Security
             detourFunction(0x08190e80, amDongleInit);
             detourFunction(0x08191201, amDongleIsAvailable);

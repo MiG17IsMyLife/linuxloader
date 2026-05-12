@@ -1,4 +1,5 @@
-
+#ifndef MAIN_SHARED_H
+#define MAIN_SHARED_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -19,6 +20,9 @@ extern "C"
     int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *gameELF, char *libraryPath);
     uint32_t getCrc32Mem(const uint8_t *data, size_t size);
     bool fileExists(const char *filename);
+    char *myBasename(char *path);
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* MAIN_SHARED_H */

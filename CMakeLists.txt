@@ -10,6 +10,7 @@ include_directories(${PROJECT_SOURCE_DIR}/src/log)
 include_directories(${PROJECT_SOURCE_DIR}/src/elfio)
 include_directories(${PROJECT_SOURCE_DIR}/src/glad/include)
 include_directories(${PROJECT_SOURCE_DIR}/src/minhook/include)
+include_directories(${PROJECT_SOURCE_DIR}/src/SDL3)
 
 # ------------------------------------------------------------------------------
 # Common Static Libraries (Built for whichever platform CMake is targeting)

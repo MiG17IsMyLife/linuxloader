@@ -31,6 +31,7 @@
 #define PRELOAD_OPENAL "libopenal.so.0"
 #define TEAM "bobbydilley, retrofan, dkeruza-neo, francesco"
 #define COLLABORATORS "doozer, rolel, caviar-X, Tovarichtch, dmanlfc, lagswitch, Murray"
+#define SPECIAL_THANKS "zExor (Extensive tests)"
 #define LINUX_LOADER_CONFIG_PATH "LINUX_LOADER_CONFIG_PATH"
 #define LINUX_LOADER_CONTROLS_PATH "LINUX_LOADER_CONTROLS_PATH"
 #define LINUX_LOADER_CONTROLS_DB_PATH "LINUX_LOADER_CONTROLS_DB_PATH"
@@ -249,6 +250,20 @@ bool fileExists(const char *path)
     return stat(path, &buffer) == 0;
 }
 
+char *myBasename(char *path)
+{
+    if (path == NULL || *path == '\0')
+        return ".";
+
+    char *last = path;
+    for (char *p = path; *p != '\0'; ++p)
+    {
+        if (*p == '/' || *p == '\\')
+            last = p + 1;
+    }
+    return (*last != '\0') ? last : path;
+}
+
 bool dirExists(const char *path)
 {
     struct stat buffer;
@@ -293,7 +308,7 @@ void extractPathFromProg(const char *input, char *out_path, char *out_prog)
     char tmp1[MAX_PATH_LENGTH], tmp2[MAX_PATH_LENGTH];
     strncpy(tmp1, input, MAX_PATH_LENGTH);
     strncpy(tmp2, input, MAX_PATH_LENGTH);
-    strncpy(out_prog, basename(tmp1), MAX_PATH_LENGTH);
+    strncpy(out_prog, myBasename(tmp1), MAX_PATH_LENGTH);
     strncpy(out_path, dirname(tmp2), MAX_PATH_LENGTH);
 }
 
@@ -344,7 +359,7 @@ bool hasSpaces(const char *path)
 
 void printUsage(char *programName)
 {
-    printf("%s [GAME_PATH] [OPTIONS]\n", basename(programName));
+    printf("%s [GAME_PATH] [OPTIONS]\n", myBasename(programName));
     printf("Options:\n");
     printf("  --test             | -t  Runs the test mode\n");
     printf("  --segaboot         | -s  Runs segaboot\n");
@@ -370,7 +385,7 @@ void printUsage(char *programName)
 void printCreateUsage(char *programName)
 {
     printf("Usage for the --create option:\n");
-    printf("  %s --create <sub-option> [output_path] [output_filename]\n\n", basename(programName));
+    printf("  %s --create <sub-option> [output_path] [output_filename]\n\n", myBasename(programName));
     printf("Arguments:\n");
     printf("  sub-option          The type of file to create. Can be one of:\n");
     printf("                        config   (for lindbergh.ini)\n");
@@ -380,15 +395,15 @@ void printCreateUsage(char *programName)
     printf("  output_filename     (Optional) The name of the file to be created. Must end with .ini.\n");
     printf("                      If not provided, the default name will be used (lindbergh.ini or controls.ini).\n\n");
     printf("Examples:\n");
-    printf("  %s --create config\n", basename(programName));
+    printf("  %s --create config\n", myBasename(programName));
 #ifdef __linux__
-    printf("  %s --create controls ./my_game_config\n", basename(programName));
-    printf("  %s --create config ./my_game_config myconfig.ini\n", basename(programName));
+    printf("  %s --create controls ./my_game_config\n", myBasename(programName));
+    printf("  %s --create config ./my_game_config myconfig.ini\n", myBasename(programName));
 #else
-    printf("  %s --create controls .\\my_game_config\n", basename(programName));
-    printf("  %s --create config .\\my_game_config\\myconfig.ini\n", basename(programName));
+    printf("  %s --create controls .\\my_game_config\n", myBasename(programName));
+    printf("  %s --create config .\\my_game_config\\myconfig.ini\n", myBasename(programName));
 #endif
-    printf("  %s --create --help\n", basename(programName));
+    printf("  %s --create --help\n", myBasename(programName));
 }
 
 void printVersion()
@@ -396,6 +411,7 @@ void printVersion()
     printf("linuxloader v%d.%d.%d\n", MAJOR_VERSION, MINOR_VERSION, UPDATE_VERSION);
     printf("Lead Programming/Reversing: %s\n", TEAM);
     printf("Collaborators: %s\n", COLLABORATORS);
+    printf("Special Thanks: %s\n", SPECIAL_THANKS);
 }
 
 #ifdef __linux__
@@ -659,7 +675,7 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
                     argCopyForDirname = strdup(arg);
                     argCopyForBasename = strdup(arg);
                     path = dirname(argCopyForDirname);
-                    filename = basename(argCopyForBasename);
+                    filename = myBasename(argCopyForBasename);
                 }
                 // if arg is a path
                 else
@@ -866,8 +882,9 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
         extractPathFromProg(forcedGamePath, forcedGameDir, gameELF);
         if (hasSpaces(forcedGameDir))
         {
-            log_warn("The path contains spaces, this most likely will cause issues.");
+            log_warn("The path \'%s\' where the game is located cannot contain spaces.", forcedGameDir);
             log_warn("Please, make sure you don't use spaces in the path.");
+            return EXIT_FAILURE;
         }
 
         if (!dirExists(forcedGameDir))
@@ -887,7 +904,7 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
 
         if (!dirExists(passedGamePath))
         {
-            log_error("Directory does not exist: %s\n", passedGamePath);
+            log_fatal("Directory does not exist: %s\n", passedGamePath);
             return EXIT_FAILURE;
         }
 
@@ -898,7 +915,7 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
             strncpy(gameELF, forcedGamePath, MAX_PATH_LENGTH);
             if (!fileExists(gameELF))
             {
-                log_error("Program '%s' not found in %s\n", gameELF, passedGamePath);
+                log_fatal("Program '%s' not found in %s\n", gameELF, passedGamePath);
                 return EXIT_FAILURE;
             }
         }
@@ -915,7 +932,7 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
 
             if (strlen(gameELF) == 0)
             {
-                log_error("No known game file found in %s\n", passedGamePath);
+                log_fatal("No known game file found in %s\n", passedGamePath);
                 return EXIT_FAILURE;
             }
         }
@@ -925,7 +942,7 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
         strncpy(gameELF, forcedGamePath, MAX_PATH_LENGTH);
         if (!fileExists(gameELF))
         {
-            log_error("'%s' not found in current directory\n", gameELF);
+            log_fatal("'%s' not found in current directory\n", gameELF);
             return EXIT_FAILURE;
         }
     }
@@ -944,7 +961,7 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
 
         if (gameELF[0] == '\0')
         {
-            log_error("No game ELF found in current directory.\n");
+            log_fatal("No game ELF found in current directory.\n");
             printUsage(argv[0]);
             return EXIT_FAILURE;
         }

@@ -15,6 +15,7 @@
 #include <stdarg.h>
 #include <unistd.h>
 #include "../config/config.h"
+#include "../mainShared.h"
 #include "../hardware/lindbergh/baseBoard.h"
 #include "../hardware/lindbergh/pciData.h"
 #include "../hardware/lindbergh/securityBoard.h"
@@ -558,12 +559,7 @@ FILE *sharedFopen(const char *restrict pathname, const char *restrict mode)
     return _fopen(pathname, mode);
 #else
     log_debug("fopen: %s (as %s) with mode %s", pathname, winPath, mode);
-    FILE *f = _fopen(winPath, mode);
-    if (!f)
-    {
-        log_error("fopen failed: %s (as %s) with mode %s", pathname, winPath, mode);
-    }
-    return f;
+    return _fopen(winPath, mode);
 #endif
 }
 
@@ -652,7 +648,7 @@ FILE *sharedFopen64(const char *pathname, const char *mode)
         case VIRTUA_FIGHTER_5_FINAL_SHOWDOWN_SBXX_REVB_6000:
             if (getConfig()->GPUVendor != NVIDIA_GPU && getConfig()->GPUVendor != ATI_GPU)
             {
-                char *filename = basename((char *)pathname);
+                char *filename = myBasename((char *)pathname);
                 if (strstr(filename, "light_") || strstr(filename, "glow_"))
                 {
                     char *start = strchr(filename, '_') + 1;

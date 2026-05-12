@@ -24,6 +24,7 @@
 #include "../log/log.h"
 #include "../hardware/lindbergh/touchScreen.h"
 #include "../graphics/sdlCalls.h"
+#include "../mainShared.h"
 #include "wiimoteEvdev.h"
 
 // --- GLOBAL STATE AND MAPPINGS ---
@@ -214,7 +215,7 @@ int initSdlInput(const char *controlsPath)
     if (envDbPath)
     {
         SDL_AddGamepadMappingsFromFile(envDbPath);
-        printf("%s loaded as a controller database.\n", basename(envDbPath));
+        printf("%s loaded as a controller database.\n", myBasename(envDbPath));
     }
 
     gameType = getConfig()->gameType;

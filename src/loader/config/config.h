@@ -337,7 +337,8 @@ typedef struct
     float blackBorderPercentage;
     int borderEnabled;
     int enableCrosshairs;
-    int gsevoAlwaysCrosshair;
+    int gsevoCrosshairAlwaysOn;
+    int gsevoCrosshairAlwaysOff;
     char p1CrossHairPath[MAX_PATH_LENGTH];
     char p2CrossHairPath[MAX_PATH_LENGTH];
     int customCrossHairWidth;

@@ -1,4 +1,3 @@
-#include "loader/log/log.h"
 #ifdef __linux__
 #include <dlfcn.h>
 #else
@@ -15,9 +14,11 @@
 #include "../../libxdiff/xdiff/xdiff.h"
 
 #include "../config/config.h"
+#include "../log/log.h"
+#include "../mainShared.h"
+
 #include "shaderPatches.h"
 #include "shaderWork/common.h"
-
 #include "shaderWork/2spicy.h"
 #include "shaderWork/axa.h"
 #include "shaderWork/gsevo.h"
@@ -86,7 +87,7 @@ bool shaderFileInList(const char *pathname, int *idx)
         {
             for (int x = 0; x < ramboMesaShaderPatchesCount; x++)
             {
-                if ((strcmp(ramboMesaShaderPatches[x].fileName, basename((char *)pathname)) == 0) &&
+                if ((strcmp(ramboMesaShaderPatches[x].fileName, myBasename((char *)pathname)) == 0) &&
                     (ramboMesaShaderPatches[x].shaderBufferSize != 0))
                 {
                     *idx = x;
@@ -99,7 +100,7 @@ bool shaderFileInList(const char *pathname, int *idx)
         {
             for (int x = 0; x < ramboNvidiaShaderPatchesCount; x++)
             {
-                if ((strcmp(ramboNvidiaShaderPatches[x].fileName, basename((char *)pathname)) == 0) &&
+                if ((strcmp(ramboNvidiaShaderPatches[x].fileName, myBasename((char *)pathname)) == 0) &&
                     (ramboNvidiaShaderPatches[x].shaderBufferSize != 0))
                 {
                     *idx = x;
@@ -112,7 +113,7 @@ bool shaderFileInList(const char *pathname, int *idx)
     {
         for (int x = 0; x < hod4ShaderPatchesCount; x++)
         {
-            if ((strcmp(hod4ShaderPatches[x].fileName, basename((char *)pathname)) == 0) && (hod4ShaderPatches[x].shaderBufferSize != 0))
+            if ((strcmp(hod4ShaderPatches[x].fileName, myBasename((char *)pathname)) == 0) && (hod4ShaderPatches[x].shaderBufferSize != 0))
             {
                 *idx = x;
                 return true;
@@ -124,7 +125,7 @@ bool shaderFileInList(const char *pathname, int *idx)
     {
         for (int x = 0; x < hod4spShaderPatchesCount; x++)
         {
-            if ((strcmp(hod4spShaderPatches[x].fileName, basename((char *)pathname)) == 0) &&
+            if ((strcmp(hod4spShaderPatches[x].fileName, myBasename((char *)pathname)) == 0) &&
                 (hod4spShaderPatches[x].shaderBufferSize != 0))
             {
                 *idx = x;
@@ -137,7 +138,7 @@ bool shaderFileInList(const char *pathname, int *idx)
     {
         for (int x = 0; x < harleyShaderPatchesCount; x++)
         {
-            if ((strcmp(harleyShaderPatches[x].fileName, basename((char *)pathname)) == 0) &&
+            if ((strcmp(harleyShaderPatches[x].fileName, myBasename((char *)pathname)) == 0) &&
                 (harleyShaderPatches[x].shaderBufferSize != 0))
             {
                 *idx = x;
@@ -150,7 +151,7 @@ bool shaderFileInList(const char *pathname, int *idx)
     {
         for (int x = 0; x < phShaderPatchesCount; x++)
         {
-            if ((strcmp(basename((char *)phShaderPatches[x].fileName), basename((char *)pathname)) == 0) &&
+            if ((strcmp(myBasename((char *)phShaderPatches[x].fileName), myBasename((char *)pathname)) == 0) &&
                 (phShaderPatches[x].shaderBufferSize != 0))
             {
                 *idx = x;
@@ -163,7 +164,7 @@ bool shaderFileInList(const char *pathname, int *idx)
     {
         for (int x = 0; x < hummerFilesToModCount; x++)
         {
-            if ((strcmp(basename((char *)hummerShaderFilesToMod[x].fileName), basename((char *)pathname)) == 0) &&
+            if ((strcmp(myBasename((char *)hummerShaderFilesToMod[x].fileName), myBasename((char *)pathname)) == 0) &&
                 (hummerShaderFilesToMod[x].shaderBufferSize != 0))
             {
                 *idx = x;
@@ -178,7 +179,7 @@ bool shaderFileInList(const char *pathname, int *idx)
         {
             for (int x = 0; x < tooSpicyShaderPatchesCount; x++)
             {
-                if ((strcmp(tooSpicyShaderPatches[x].fileName, basename((char *)pathname)) == 0) &&
+                if ((strcmp(tooSpicyShaderPatches[x].fileName, myBasename((char *)pathname)) == 0) &&
                     (tooSpicyShaderPatches[x].shaderBufferSize != 0))
                 {
                     *idx = x;
@@ -194,7 +195,7 @@ bool shaderFileInList(const char *pathname, int *idx)
         {
             for (int x = 0; x < hodexShaderPatchesCount; x++)
             {
-                if ((strcmp(hodexShaderPatches[x].fileName, basename((char *)pathname)) == 0) &&
+                if ((strcmp(hodexShaderPatches[x].fileName, myBasename((char *)pathname)) == 0) &&
                     (hodexShaderPatches[x].shaderBufferSize != 0))
                 {
                     *idx = x;
@@ -208,7 +209,7 @@ bool shaderFileInList(const char *pathname, int *idx)
     {
         for (int x = 0; x < axaShaderPatchesCount; x++)
         {
-            if ((strcmp(basename((char *)axaShaderPatches[x].fileName), basename((char *)pathname)) == 0) &&
+            if ((strcmp(myBasename((char *)axaShaderPatches[x].fileName), myBasename((char *)pathname)) == 0) &&
                 (axaShaderPatches[x].shaderBufferSize != 0))
             {
                 *idx = x;
@@ -221,7 +222,7 @@ bool shaderFileInList(const char *pathname, int *idx)
     {
         for (int x = 0; x < axalShaderPatchesCount; x++)
         {
-            if ((strcmp(basename((char *)axalShaderPatches[x].fileName), basename((char *)pathname)) == 0) &&
+            if ((strcmp(myBasename((char *)axalShaderPatches[x].fileName), myBasename((char *)pathname)) == 0) &&
                 (axalShaderPatches[x].shaderBufferSize != 0))
             {
                 *idx = x;

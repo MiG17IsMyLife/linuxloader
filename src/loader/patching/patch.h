@@ -7,3 +7,12 @@ int initPatch();
 
 void callLoadCard();
 void callEjectCard();
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+    void patchSO(uintptr_t base, const char *soPath);
+#ifdef __cplusplus
+}
+#endif

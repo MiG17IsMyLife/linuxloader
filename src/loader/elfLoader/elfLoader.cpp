@@ -171,8 +171,6 @@ void ElfLoader::PreReserveAddressSpace(const std::string &path)
 
 bool ElfLoader::Load(const std::string &path)
 {
-    m_Path = path;
-
     if (m_IsSharedObject)
         return LoadMapAndExport(path);
     if (!LoadMapAndExport(path))
@@ -181,16 +179,15 @@ bool ElfLoader::Load(const std::string &path)
     if (!SymbolResolver::GetInstance().ProcessAllRelocations())
         return false;
 
-    if (!SymbolResolver::GetInstance().ProcessAllRelocations())
-        return false;
-
     if (!ProcessRelocations())
         return false;
+    SymbolResolver::GetInstance().PatchAllSOs();
 
     if (!SymbolResolver::GetInstance().RunAllInits())
         return false;
     RegisterAllEhFrames();
 
+    log_debug("After EH frames");
     return true;
 }
 
@@ -569,7 +566,7 @@ bool ElfLoader::ProcessRelocations()
                         {
                             if (moduleName == "UNRESOLVED_STUB")
                             {
-                                log_warn("Symbol \"%s\" was not found, assigned crash stub at %p", symbolName.c_str(), resolvedFunc);
+                                log_info("Symbol \"%s\" was not found, assigned crash stub at %p", symbolName.c_str(), resolvedFunc);
                             }
                             else if (moduleName == "WEAK_SYMBOL")
                             {
@@ -612,13 +609,13 @@ bool ElfLoader::ProcessRelocations()
                                         }
                                         else
                                         {
-                                            log_warn("R_386_COPY for %s: source not found in shared libs (srcAddr=%p)", symbolName.c_str(),
+                                            log_info("R_386_COPY for %s: source not found in shared libs (srcAddr=%p)", symbolName.c_str(),
                                                      srcAddr);
                                         }
                                     }
                                     else
                                     {
-                                        log_warn("R_386_COPY for %s has 0 size", symbolName.c_str());
+                                        log_info("R_386_COPY for %s has 0 size", symbolName.c_str());
                                     }
                                     break;
                                 }
@@ -628,7 +625,7 @@ bool ElfLoader::ProcessRelocations()
                                     log_trace("Applied R_386_GLOB_DAT / R_386_JMP_SLOT for %s at %p", symbolName.c_str(), patchAddr);
                                     break;
                                 default:
-                                    log_warn("Unhandled relocation type %lu for symbol %s", type, symbolName.c_str());
+                                    log_info("Unhandled relocation type %lu for symbol %s", type, symbolName.c_str());
                                     break;
                             }
                         }
@@ -639,7 +636,7 @@ bool ElfLoader::ProcessRelocations()
                     }
                     else
                     {
-                        log_warn("Unhandled anonymous relocation type %lu at %p", type, patchAddr);
+                        log_info("Unhandled anonymous relocation type %lu at %p", type, patchAddr);
                     }
                 }
             }
@@ -664,7 +661,7 @@ bool ElfLoader::ExportSymbols()
 
     if (!dynSymSec)
     {
-        log_warn("No SHT_DYNSYM section found - nothing to export");
+        log_info("No SHT_DYNSYM section found - nothing to export");
         return true;
     }
 
@@ -830,7 +827,7 @@ bool ElfLoader::RunInit()
 
                     if (funcPtrVal < 0x10000)
                     {
-                        log_warn("DT_INIT_ARRAY[%zu] has suspiciously low address 0x%08X — skipping (possibly un-relocated)", k, funcPtrVal);
+                        log_info("DT_INIT_ARRAY[%zu] has suspiciously low address 0x%08X — skipping (possibly un-relocated)", k, funcPtrVal);
                         continue;
                     }
 
@@ -964,12 +961,13 @@ bool ElfLoader::Execute(int argc, char **argv, char **envp)
 extern "C" void *GetStaticFunctionAddress(const char *name)
 {
     std::string moduleName;
-    if (!SymbolResolver::GetInstance().ResolveSymbol(name, &moduleName))
+    void *result = SymbolResolver::GetInstance().ResolveSymbol(name, &moduleName);
+    if (!result)
     {
         log_error("Failed to resolve symbol: %s\n", name);
         return NULL;
     }
-    return SymbolResolver::GetInstance().ResolveSymbol(name, &moduleName);
+    return result;
 }
 
 #endif

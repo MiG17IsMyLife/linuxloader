@@ -823,6 +823,9 @@ namespace LibcBridge
         if (strcmp(command, "touch /var/tmp/atr_err") == 0)
             command = "type nul > .\\tmp\\atr_err";
 
+        if (strncmp(command, "touch /var/tmp/warning", 20) == 0)
+            command = "type nul > .\\tmp\\warning";
+
         if (strncmp(command, "ifconfig eth0", 11) == 0)
             return 0;
 
@@ -929,7 +932,7 @@ namespace LibcBridge
                 win_sig = SIGSEGV;
                 break;
             default:
-                log_warn("signal: unsupported signal %d", signum);
+                log_info("signal: unsupported signal %d", signum);
                 return (void (*)(int))-1; // SIG_ERR
         }
 
@@ -965,7 +968,7 @@ namespace LibcBridge
                 win_sig = SIGSEGV;
                 break;
             default:
-                log_warn("raise: unsupported signal %d", sig);
+                log_info("raise: unsupported signal %d", sig);
                 return -1;
         }
         return ::raise(win_sig);
@@ -1014,7 +1017,7 @@ namespace LibcBridge
                 win_sig = SIGSEGV;
                 break;
             default:
-                log_warn("sigaction: unsupported signal %d", signum);
+                log_info("sigaction: unsupported signal %d", signum);
                 return -1;
         }
 
@@ -1055,7 +1058,7 @@ namespace LibcBridge
             // SIGKILL (9) or SIGTERM (15) -> Terminate self
             if (sig == 9 || sig == 15)
             {
-                log_warn("kill: Process requested self-termination");
+                log_info("kill: Process requested self-termination");
                 exit(0);
             }
         }
@@ -1065,7 +1068,7 @@ namespace LibcBridge
 
     int bridgeWait(int *wstatus)
     {
-        log_warn("wait() called: No child processes to wait for. Returning ECHILD.");
+        log_info("wait() called: No child processes to wait for. Returning ECHILD.");
 
         Sleep(10);
 
@@ -1107,7 +1110,7 @@ namespace LibcBridge
         void *ret = VirtualAlloc(addr, length, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
         if (ret && fd >= 0)
         {
-            log_warn("mmap: Emulating file mapping by reading into VirtualAlloc memory (fd=%d)", fd);
+            log_info("mmap: Emulating file mapping by reading into VirtualAlloc memory (fd=%d)", fd);
             _lseek(fd, offset, SEEK_SET);
             _read(fd, ret, length);
         }

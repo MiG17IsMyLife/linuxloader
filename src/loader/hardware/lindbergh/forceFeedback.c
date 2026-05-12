@@ -5,6 +5,7 @@
 
 #include "forceFeedback.h"
 #include "../../input/sdlInput.h"
+#include "../../log/log.h"
 
 static int effect_id = -1;
 extern SDLControllers sdlJoysticks;
@@ -32,12 +33,12 @@ void sdlFfbInit(void)
         {
             if (SDL_GetHapticFeatures(sdlJoysticks.haptics[i]) & SDL_HAPTIC_LEFTRIGHT)
             {
-                SDL_Log("FFB: Haptic opened from joystick %d (%s)", i, SDL_GetJoystickName(joy));
+                log_warn("FFB: Haptic opened from joystick %d (%s)", i, SDL_GetJoystickName(joy));
                 sdlFfbRumble(1.0, 1.0, 200);
             }
             else
             {
-                SDL_Log("FFB: Joystick %d has no LEFTRIGHT support, skipping", i);
+                log_warn("FFB: Joystick %d has no LEFTRIGHT support, skipping", i);
                 SDL_CloseHaptic(sdlJoysticks.haptics[i]);
                 sdlJoysticks.haptics[i] = NULL;
             }
@@ -61,12 +62,12 @@ void sdlFfbInit(void)
                 {
                     if (SDL_GetHapticFeatures(sdlJoysticks.haptics[i]) & SDL_HAPTIC_LEFTRIGHT)
                     {
-                        SDL_Log("FFB: Standalone haptic %d: %s", i, SDL_GetHapticNameForID(haptics[i]));
+                        log_warn("FFB: Standalone haptic %d: %s", i, SDL_GetHapticNameForID(haptics[i]));
                         sdlFfbRumble(1.0, 1.0, 200);
                     }
                     else
                     {
-                        SDL_Log("FFB: Standalone haptic %d has no LEFTRIGHT support, skipping", i);
+                        log_warn("FFB: Standalone haptic %d has no LEFTRIGHT support, skipping", i);
                         SDL_CloseHaptic(sdlJoysticks.haptics[i]);
                         sdlJoysticks.haptics[i] = NULL;
                     }
@@ -77,7 +78,7 @@ void sdlFfbInit(void)
     }
 
     if (!sdlJoysticks.haptics[0])
-        SDL_Log("FFB: No haptic device found");
+        log_warn("FFB: No haptic device found");
 }
 
 void sdlFfbRumble(float left, float right, int duration_ms)
@@ -120,7 +121,7 @@ void sdlFfbDriveboard(const unsigned char *buffer, size_t count)
         { // power
             if (buffer[2] == 0x01)
             {
-                printf("0x80 command: Triggering full-power rumble\n");
+                log_info("0x80 command: Triggering full-power rumble\n");
                 // ffb_rumble(1.0f, 1.0f, 500);
             }
             break;
@@ -133,7 +134,7 @@ void sdlFfbDriveboard(const unsigned char *buffer, size_t count)
             float force = (float)power / 63.0f; // Map power 1-63 to 0.0-1.0
 
             int duration = 100;
-            printf("Triggering rumble: force=%.2f, duration=%dms\n", force, duration);
+            log_info("Triggering rumble: force=%.2f, duration=%dms\n", force, duration);
             sdlFfbRumble(force, force, duration);
             break;
         }
@@ -156,12 +157,12 @@ void sdlFfbDriveboard(const unsigned char *buffer, size_t count)
                 left = (float)value / 127.0f;
             }
 
-            // printf("Triggering movement rumble: left=%.2f, right=%.2f, duration=%dms\n", left, right, duration);
-            // sdlFfbRumble(left, right, duration);
+            log_info("Triggering movement rumble: left=%.2f, right=%.2f, duration=%dms\n", left, right, duration);
+            sdlFfbRumble(left, right, duration);
             break;
         }
         case 0x86: // Friction
-            printf("Friction:");
+            log_info("Friction:");
             printf(" Power: %d", buffer[1]);
             printf(" / Percentage: %d\n", buffer[2]);
             break;
