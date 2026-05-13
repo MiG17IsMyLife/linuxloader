@@ -11,6 +11,12 @@
 
 #define MAX_PATH_LENGTH 1024
 
+#ifdef __linux__
+#    define PATH_SEPARATOR '/'
+#else
+#    define PATH_SEPARATOR '\\'
+#endif
+
 #ifdef __cplusplus
 extern "C"
 {

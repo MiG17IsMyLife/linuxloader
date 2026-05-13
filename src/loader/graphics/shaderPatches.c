@@ -1137,9 +1137,13 @@ char *findLibCg()
     const char *foundPath = NULL;
     FILE *libCgF = NULL;
 
-    char appImageLib[MAX_PATH_LENGTH];
-    snprintf(appImageLib, MAX_PATH_LENGTH, "%s/usr/lib32/libCg2.so", getenv("APP_IMG_ROOT"));
-    char *pathsToCheck[] = {NULL, "/app/lib32/libCg2.so", appImageLib, "./libCg.so", NULL};
+    char appImageLib[MAX_PATH_LENGTH] = "";
+    const char *appImageRoot = getenv("APP_IMG_ROOT");
+    if (appImageRoot != NULL)
+        snprintf(appImageLib, MAX_PATH_LENGTH, "%s/usr/lib32/libCg2.so", appImageRoot);
+
+
+    char *pathsToCheck[] = {NULL, "/app/lib32/libCg2.so", appImageLib, NULL};
 
     if (strcmp(getConfig()->libCgPath, "") != 0)
     {
@@ -1149,15 +1153,12 @@ char *findLibCg()
     const char *currentDir = getenv("LINUX_LOADER_CURRENT_DIR");
     if (currentDir != NULL)
     {
-        size_t pathLen = strlen(currentDir) + strlen("/libCg.so") + 1;
-        pathsToCheck[4] = malloc(pathLen);
-        if (pathsToCheck[4] != NULL)
-        {
-            snprintf(pathsToCheck[4], pathLen, "%s/%s", currentDir, "libCg.so");
-        }
+        size_t pathLen = strlen(currentDir) + strlen("/ll-deps/libCg2.so") + 1;
+        pathsToCheck[0] = malloc(pathLen);
+        snprintf(pathsToCheck[0], pathLen, "%s/ll-deps/libCg2.so", currentDir);
     }
 
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 3; ++i)
     {
         if (pathsToCheck[i] == NULL)
             continue;
@@ -1167,11 +1168,6 @@ char *findLibCg()
             foundPath = pathsToCheck[i];
             break;
         }
-    }
-
-    if (foundPath != pathsToCheck[4] && pathsToCheck[4] != NULL)
-    {
-        free(pathsToCheck[4]);
     }
 
     if (foundPath == NULL)

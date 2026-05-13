@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.6]
+### Added
+    - Added a new logic for the shake and changed the default values. The new logic will account for the game's resolution and I also added a new setting to set a percentage of the screen where the movement should be detected (defaults to 15%). Recreate controls.ini to see the new settings.
+    - Changed the default behavior of -c, -o and -d to not load from the game folder by default if no path is specified. Now, if you pass just the filename, it will search in the current directory, then will fallback to the game folder, if not found there, it will use the default config.
+    - Added -L / --library-path option to specify the path for the libraries for linux, if path not found, will fallback to ll-deps in the loader folder.
+### Fixed
+    - Fixed Border for Ghost Squad Evolution for Sinden Light guns.
+    - Fixed a bug where the loader would exit if the path to the elf contain spaces.
+    - Fixed a bug in the Reload logic for shooting games.
+    - Fixed a bug in the load of custom controller DB.
+
 ## [3.0.5]
 ### Added
     - Option to always disable Crosshairs in Ghost Squad Evolution.

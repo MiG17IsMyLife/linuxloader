@@ -228,7 +228,7 @@ void SymbolResolver::LoadNeededLibrary(const std::string &linuxName)
     {
         for (const auto &searchPath : m_LibrarySearchPaths)
         {
-            std::string candidatePath = searchPath + "/" + targetName;
+            std::string candidatePath = searchPath + "\\" + targetName;
             std::ifstream testFile(candidatePath.c_str());
             if (testFile.good())
             {
@@ -278,7 +278,7 @@ void SymbolResolver::LoadNeededLibrary(const std::string &linuxName)
 
     for (const auto &searchPath : m_LibrarySearchPaths)
     {
-        std::string candidatePath = searchPath + "/" + targetName;
+        std::string candidatePath = searchPath + "\\" + targetName;
         std::ifstream testFile(candidatePath.c_str());
         if (testFile.good())
         {

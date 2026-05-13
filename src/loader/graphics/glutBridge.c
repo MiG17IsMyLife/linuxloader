@@ -91,7 +91,7 @@ void bridgeGlutSwapBuffers(void)
 
     blitStretch();
 
-    if (config->borderEnabled)
+    if (config->borderEnabled && gId != GHOST_SQUAD_EVOLUTION_SBNJ)
         drawGameBorder(drawableW, drawableH, config->whiteBorderPercentage, config->blackBorderPercentage);
 
     SDL_GL_SwapWindow(g_SdlWindow);

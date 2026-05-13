@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 cd libs
 find /usr/lib/i386-linux-gnu -name "libSDL3*" -exec sh -c 'tar -rf libs.tar -C /usr/lib/i386-linux-gnu $(basename {})' \;
 find /usr/lib/i386-linux-gnu -name "libFAudio*" -exec sh -c 'tar -rf libs.tar -C /usr/lib/i386-linux-gnu $(basename {})' \;

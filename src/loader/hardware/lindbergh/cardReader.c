@@ -8,6 +8,7 @@
 #include "../../config/config.h"
 #include "../../patching/flowControl.h"
 #include "../../log/log.h"
+#include "../../mainShared.h"
 
 #define BLOCKSIZE 8
 
@@ -380,7 +381,6 @@ bool idCardFileExists(const char *folderPath, long expectedSize, bool twoDigits)
 
     char fileName[20];
     char currentFullPath[1024];
-    char *fmt;
     int maxCards = 999;
     char *cardFilename = "InidCrd%03d.crd";
 
@@ -392,21 +392,21 @@ bool idCardFileExists(const char *folderPath, long expectedSize, bool twoDigits)
 
     for (int i = 0; i <= maxCards; ++i)
     {
-        fmt = "%s%s";
         sprintf(fileName, cardFilename, i);
         if (folderPath != NULL && strlen(folderPath) > 0)
         {
             char lastChar = folderPath[strlen(folderPath) - 1];
-#ifdef __linux__
-            if (lastChar != '/')
-                fmt = "%s/%s";
-#else
-            if (lastChar != '\\')
-                fmt = "%s\\%s";
-#endif
+            if (lastChar != PATH_SEPARATOR)
+                snprintf(currentFullPath, sizeof(currentFullPath), "%s%c%s", folderPath, PATH_SEPARATOR, fileName);
+            else
+                snprintf(currentFullPath, sizeof(currentFullPath), "%s%s", folderPath, fileName);
+        }
+        else
+        {
+            snprintf(currentFullPath, sizeof(currentFullPath), "%s", fileName);
         }
 
-        if (snprintf(currentFullPath, sizeof(currentFullPath), fmt, folderPath, fileName) >= sizeof(currentFullPath))
+        if (strlen(currentFullPath) >= sizeof(currentFullPath))
         {
             fprintf(stderr, "Error: Constructed path for '%s' in folder '%s' is too long.\n", fileName, folderPath);
             continue;

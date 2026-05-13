@@ -41,11 +41,7 @@ jobs:
     - name: Compile Build for Linux
       shell: bash
       run: |
-        make linux
-        cd build-linux
-        rm -rf CMakeFiles CMakeCache.txt cmake_install.cmake Makefile libminhook.a libxdiff.a
-        cd ..
-        tar -czvf linuxloader-linux.tar.gz -C ./build-linux .
+        scripts/linux/make-linux.sh
         scripts/appimage/make-appimage.sh
 
     - name: Upload linuxloader-linux.tar.gz artifact

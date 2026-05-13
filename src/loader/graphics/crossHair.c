@@ -7,6 +7,7 @@
 #include <SDL3_image/SDL_image.h>
 
 #include "crossHair.h"
+#include "border.h"
 #include "../config/config.h"
 #include "../patching/patchResolution.h"
 // #include "glInitFunctions.h"
@@ -375,6 +376,10 @@ void renderGsEvoCrosshairs(void)
 
     if (texFormat == 0x1908 || texFormat == 0x1 || texFormat == 0x8051)
         return;
+
+    EmulatorConfig *config = getConfig();
+    if (config->borderEnabled)
+        drawGameBorder(640, 480, config->whiteBorderPercentage, config->blackBorderPercentage);
 
     glad_glPushAttrib(GL_ALL_ATTRIB_BITS);
     // glad_glDisable(GL_DEPTH_TEST); // for HOD4

@@ -100,7 +100,7 @@ DIR *sharedOpendir(const char *dirname)
         {
             char *newDirName = getConfig()->idCardFolder;
             char lastChar = newDirName[strlen(newDirName) - 1];
-            if (lastChar == '/')
+            if (lastChar == PATH_SEPARATOR)
             {
                 newDirName[strlen(newDirName) - 1] = '\0';
             }
@@ -527,13 +527,13 @@ FILE *sharedFopen(const char *restrict pathname, const char *restrict mode)
                 char newPathname[MAX_PATH_LENGTH];
                 int newPathnameLen = strlen(getConfig()->idCardFolder) + strlen(pathname) + 1;
                 char lastChar = getConfig()->idCardFolder[strlen(getConfig()->idCardFolder) - 1];
-                if (lastChar != '/')
+                if (lastChar != PATH_SEPARATOR)
                 {
-                    fmt = "%s/%s";
+                    fmt = "%s%c%s";
                     newPathnameLen++;
                 }
 
-                snprintf(newPathname, newPathnameLen, fmt, getConfig()->idCardFolder, pathname);
+                snprintf(newPathname, newPathnameLen, fmt, getConfig()->idCardFolder, PATH_SEPARATOR, pathname);
                 return fopen(newPathname, mode);
             }
         }

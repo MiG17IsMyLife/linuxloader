@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 PACKAGES=(
     "libdrm-amdgpu1:i386"

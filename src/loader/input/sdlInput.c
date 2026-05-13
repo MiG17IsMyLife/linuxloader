@@ -34,13 +34,14 @@ ChangedAction gChangedActions[NUM_LOGICAL_ACTIONS * MAX_ENTITIES];
 LogicalActionProperties gActionProperties[MAX_ENTITIES][NUM_LOGICAL_ACTIONS];
 int gNumChangedActions = 0;
 SDLControllers sdlJoysticks;
-int gLastGunX[MAX_ENTITIES];
-int gLastGunY[MAX_ENTITIES];
+float gLastGunNormX[MAX_ENTITIES];
+float gLastGunNormY[MAX_ENTITIES];
 int gLastGunXDir[MAX_ENTITIES];
 int gLastGunYDir[MAX_ENTITIES];
 float gShakeValue[MAX_ENTITIES];
 float gShakeIncreaseRate = 10.0f;
 float gShakeDecayRate = 0.95f;
+float gShakeMinScreenFraction = 0.15f;
 
 ComboGroup gComboGroups[MAX_COMBINATION_GROUPS] = {0};
 int gNumComboGroups = 0;
@@ -211,11 +212,13 @@ int initSdlInput(const char *controlsPath)
         log_warn("Could not initialize SDL_GameController: %s\n", SDL_GetError());
 
     // Load official and community-sourced controller mappings from a database file.
-    char *envDbPath = getenv("LINDBERGH_CONTROLS_DB_PATH");
+    char *envDbPath = getenv("LINUX_LOADER_CONTROLS_DB_PATH");
     if (envDbPath)
     {
-        SDL_AddGamepadMappingsFromFile(envDbPath);
-        printf("%s loaded as a controller database.\n", myBasename(envDbPath));
+        if (SDL_AddGamepadMappingsFromFile(envDbPath) > 0)
+            printf("%s loaded as a controller database.\n", myBasename(envDbPath));
+        else
+            printf("Failed to load %s as a controller database.\n", myBasename(envDbPath));
     }
 
     gameType = getConfig()->gameType;
@@ -1349,6 +1352,11 @@ void loadGlobalConfig(const IniConfig *ini)
                     gShakeDecayRate = atof(value);
                     printf("  Set ShakeDecayRate to %f\n", gShakeDecayRate);
                 }
+                else if (strcmp(key, "ShakeMinScreenFraction") == 0)
+                {
+                    gShakeMinScreenFraction = atof(value);
+                    printf("  Set ShakeMinScreenFraction to %f\n", gShakeMinScreenFraction);
+                }
             }
         }
     }
@@ -1838,8 +1846,11 @@ void processSdlEvent(const SDL_Event *e)
 
             ControlBinding *bindingX = &gMouseAxisBindings[0]; // X-Axis
             ControlBinding *bindingY = &gMouseAxisBindings[1]; // Y-Axis
+            static bool outOfBounds[MAX_PLAYERS + 1] = {false};
+            JVSPlayer reloadPlayer = (bindingX->type != INPUT_TYPE_NONE) ? bindingX->player : PLAYER_1;
             if (gameType == SHOOTING && (posX <= 0.01 || posX >= 0.99 || posY <= 0.01 || posY >= 0.99))
             {
+                outOfBounds[reloadPlayer] = true;
                 if (gId == RAMBO_SBQL || gId == RAMBO_SBSS_CHINA || gId == TOO_SPICY_SBMV)
                 {
                     if (bindingX->type != INPUT_TYPE_NONE)
@@ -1855,14 +1866,18 @@ void processSdlEvent(const SDL_Event *e)
                         addActionToDirtyList(bindingY->player, LA_GunY);
                     }
                 }
-                gActionStates[PLAYER_1][LA_Reload].isActive = true;
-                addActionToDirtyList(PLAYER_1, LA_Reload);
+                gActionStates[reloadPlayer][LA_Reload].isActive = true;
+                addActionToDirtyList(reloadPlayer, LA_Reload);
                 break;
             }
             else
             {
-                gActionStates[PLAYER_1][LA_Reload].isActive = false;
-                addActionToDirtyList(PLAYER_1, LA_Reload);
+                if (outOfBounds[reloadPlayer])
+                {
+                    gActionStates[reloadPlayer][LA_Reload].isActive = false;
+                    addActionToDirtyList(reloadPlayer, LA_Reload);
+                    outOfBounds[reloadPlayer] = false;
+                }
             }
 
             if (bindingX->type != INPUT_TYPE_NONE)
@@ -2143,25 +2158,45 @@ void processChangedActions()
 /**
  * @brief Calculates and updates the gun shake effect for HOD4.
  * This function is called every frame for games that support it.
+ * The direction threshold is based on the game's native resolution
+ * (blitWidth/blitHeight) to ensure consistent sensitivity regardless
+ * of window size, screen resolution, or letterboxing.
  */
 void updateGunShake()
 {
+    // Screen fraction threshold — a direct fraction of the game's native resolution.
+    // Default gShakeMinScreenFraction=0.15 means 15% of screen width/height,
+    // which is consistent across any game resolution.
+    float thresholdX = (blitWidth > 0) ? gShakeMinScreenFraction : 0.15f;
+    float thresholdY = (blitHeight > 0) ? gShakeMinScreenFraction : 0.15f;
+
     for (int p = PLAYER_1; p <= PLAYER_2; p++)
     {
-        int currentX = jvsAnalogueMaxValue * gActionStates[p][LA_GunX].analogValue;
-        int currentY = jvsAnalogueMaxValue * gActionStates[p][LA_GunY].analogValue;
+        // Work in normalized 0.0-1.0 space (already resolution-independent
+        // because mouse coords are normalized by dest.W/dest.H in processSdlEvent)
+        float normX = gActionStates[p][LA_GunX].analogValue;
+        float normY = gActionStates[p][LA_GunY].analogValue;
 
-        int deltaX = currentX - gLastGunX[p];
-        int deltaY = currentY - gLastGunY[p];
+        float deltaX = normX - gLastGunNormX[p];
+        float deltaY = normY - gLastGunNormY[p];
 
-        int currentDirX = (deltaX > 2) ? 1 : ((deltaX < -2) ? -1 : 0);
-        int currentDirY = (deltaY > 2) ? 1 : ((deltaY < -2) ? -1 : 0);
+        // Direction detection using game-native-pixel threshold.
+        // With default threshold gShakeMinScreenFraction=0.15, the gun must
+        // move 15% of the screen width/height before a direction reversal is registered.
+        int currentDirX = (deltaX > thresholdX) ? 1 :
+                          ((deltaX < -thresholdX) ? -1 : 0);
+        int currentDirY = (deltaY > thresholdY) ? 1 :
+                          ((deltaY < -thresholdY) ? -1 : 0);
 
+        // Accumulate shake on direction reversal.
+        // Multiply by jvsAnalogueMaxValue to maintain the existing scale
+        // for ShakeIncreaseRate (since deltas are now in 0-1 normalized space
+        // instead of 0-jvsAnalogueMaxValue JVS unit space).
         if (currentDirX != 0 && currentDirX == -gLastGunXDir[p])
-            gShakeValue[p] += abs(deltaX) * gShakeIncreaseRate;
+            gShakeValue[p] += fabsf(deltaX) * gShakeIncreaseRate * jvsAnalogueMaxValue;
 
         if (currentDirY != 0 && currentDirY == -gLastGunYDir[p])
-            gShakeValue[p] += abs(deltaY) * gShakeIncreaseRate;
+            gShakeValue[p] += fabsf(deltaY) * gShakeIncreaseRate * jvsAnalogueMaxValue;
 
         // Apply decay
         gShakeValue[p] *= gShakeDecayRate;
@@ -2188,8 +2223,8 @@ void updateGunShake()
         }
 
         // Update last known positions and directions for the next frame
-        gLastGunX[p] = currentX;
-        gLastGunY[p] = currentY;
+        gLastGunNormX[p] = normX;
+        gLastGunNormY[p] = normY;
         if (currentDirX != 0)
             gLastGunXDir[p] = currentDirX;
         if (currentDirY != 0)

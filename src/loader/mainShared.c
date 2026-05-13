@@ -29,43 +29,27 @@
 #define LD_PRELOAD "LD_PRELOAD"
 #define PRELOAD_FILE_NAME "linuxloader.so"
 #define PRELOAD_OPENAL "libopenal.so.0"
-#define TEAM "bobbydilley, retrofan, dkeruza-neo, francesco"
-#define COLLABORATORS "doozer, rolel, caviar-X, Tovarichtch, dmanlfc, lagswitch, Murray"
+#define TEAM "bobbydilley, retrofan, dkeruza-neo"
+#define COLLABORATORS "francesco, doozer, rolel, caviar-X, Tovarichtch, dmanlfc, lagswitch, Murray"
 #define SPECIAL_THANKS "zExor (Extensive tests)"
 #define LINUX_LOADER_CONFIG_PATH "LINUX_LOADER_CONFIG_PATH"
 #define LINUX_LOADER_CONTROLS_PATH "LINUX_LOADER_CONTROLS_PATH"
 #define LINUX_LOADER_CONTROLS_DB_PATH "LINUX_LOADER_CONTROLS_DB_PATH"
 #define LINUX_LOADER_CURRENT_DIR "LINUX_LOADER_CURRENT_DIR"
+#define DEFAULT_CONFIG_FILE "linuxloader.ini"
+#define DEFAULT_CONTROLS_FILE "controls.ini"
+#define DEFAULT_CONTROLS_DB_FILE "gamecontrollerdb.txt"
 
 uint32_t elfCrc = 0;
 char *controlsPath = NULL;
 char *configPath = NULL;
 
 // List of all linuxloader executables known, not including the test executables
-char *games[] = {"a.elf",
-                 "abc",
-                 "apacheM.elf",
-                 "chopperM.elf",
-                 "drive.elf",
-                 "dsr",
-                 "gsevo",
-                 "hod4M.elf",
-                 "hodexRI.elf",
-                 "hummer_Master.elf",
-                 "id4.elf",
-                 "id5.elf",
-                 "Jennifer",
-                 "lgj_final",
-                 "lgjsp_app",
-                 "main.exe",
-                 "mj4",
-                 "q2satl_lind",
-                 "ramboM.elf",
-                 "vf5",
-                 "vsg",
-                 "vt3",
-                 "vt3_Lindbergh",
-                 "END"};
+char *games[] = {"a.elf",    "abc",     "apacheM.elf",   "chopperM.elf", "drive.elf",
+                 "dsr",      "gsevo",   "hod4M.elf",     "hodexRI.elf",  "hummer_Master.elf",
+                 "id4.elf",  "id5.elf", "Jennifer",      "lgj_final",    "lgjsp_app",
+                 "main.exe", "mj4",     "q2satl_lind",   "ramboM.elf",   "vf5",
+                 "vsg",      "vt3",     "vt3_Lindbergh", "END"};
 
 /**
  * An array containin clean games elf's CRC32
@@ -235,7 +219,6 @@ int calculateCRC32inChunks(const char *filename, uint32_t *crc)
 
 int lookupCrcTable(uint32_t crc)
 {
-    // printf("CRC: %08X\n", crc);
     for (int x = 0; x < cleanElfCRC32Count; x++)
     {
         if (cleanElfCRC32[x] == crc)
@@ -328,13 +311,30 @@ void testModePath(char *program)
         strcat(program, " -t");
 }
 
-char *findPreloadLibrary(const char *originalDir, char *preloadFileName)
+char *findPreloadLibrary(const char *originalDir, const char *libraryPath, char *preloadFileName)
 {
     static char result[MAX_PATH_LENGTH];
     char appImageLib[MAX_PATH_LENGTH];
+    char llDepsPath[MAX_PATH_LENGTH];
+    char libraryPathDir[MAX_PATH_LENGTH];
     snprintf(appImageLib, MAX_PATH_LENGTH, "%s/usr/lib32", getenv("APP_IMG_ROOT"));
-    const char *folderCandidates[] = {"/app/lib32", appImageLib, originalDir, "/usr/lib/i386-linux-gnu", "/usr/lib/i686-linux-gnu",
-                                      "/usr/lib32", "/usr/lib",  NULL};
+    snprintf(llDepsPath, MAX_PATH_LENGTH, "%s/ll-deps", originalDir);
+
+    if (strlen(libraryPath) > 0)
+    {
+        if (libraryPath[0] == PATH_SEPARATOR)
+            snprintf(libraryPathDir, sizeof(libraryPathDir), "%s", libraryPath);
+        else
+            snprintf(libraryPathDir, sizeof(libraryPathDir), "%s%c%s", originalDir, PATH_SEPARATOR, libraryPath);
+    }
+    else
+    {
+        libraryPathDir[0] = '\0';
+    }
+
+    const char *folderCandidates[] = {
+        "/app/lib32", appImageLib, libraryPathDir, llDepsPath, originalDir, "/usr/lib/i386-linux-gnu",
+        "/usr/lib/i686-linux-gnu", "/usr/lib32", "/usr/lib", NULL};
 
     for (int i = 0; i < sizeof(folderCandidates) / sizeof(folderCandidates[0]); i++)
     {
@@ -375,9 +375,7 @@ void printUsage(char *programName)
     printf("  --config           | -c  Specifies configuration ini file path\n");
     printf("  --controls         | -o  Specifies controls ini file path\n");
     printf("  --controllerdb     | -d  Specifies gamecontrollerdb.txt file path\n");
-#ifdef _WIN32
     printf("  --library-path     | -L  Specifies library path\n");
-#endif
     printf("  --gamepath         | -g  Specifies game path without ELF name\n");
     printf("  --create           | -C  Creates a default config or controls file. Use '--create --help' for more info.\n");
 }
@@ -414,6 +412,29 @@ void printVersion()
     printf("Special Thanks: %s\n", SPECIAL_THANKS);
 }
 
+void setDbFileEnv(const char *contDbFilePath)
+{
+    if (strlen(contDbFilePath) > 0)
+    {
+        if (hasSpaces(contDbFilePath))
+        {
+            log_error("Controller database path '%s' contains spaces; additional game controller mappings will not be added.",
+                      contDbFilePath);
+            contDbFilePath = "";
+        }
+        else if (!fileExists(contDbFilePath))
+        {
+            log_error("Controller database file '%s' does not exist; additional game controller mappings will be omitted.", contDbFilePath);
+            contDbFilePath = "";
+        }
+#ifdef __linux__
+        setenv(LINUX_LOADER_CONTROLS_DB_PATH, contDbFilePath, 1);
+#else
+        _putenv_s(LINUX_LOADER_CONTROLS_DB_PATH, contDbFilePath);
+#endif
+    }
+}
+
 #ifdef __linux__
 int pathsDiffer(const char *p1, const char *p2)
 {
@@ -424,7 +445,8 @@ int pathsDiffer(const char *p1, const char *p2)
 }
 
 void setEnvironmentVariables(const char *ldLibPath, const char *originalDir, const char *gameDir, int zink, int nvidia,
-                             const char *confFilePath, const char *contFilePath, const char *contDbFilePath, char *libOpenal)
+                             const char *libraryPath, const char *confFilePath, const char *contFilePath,
+                             const char *contDbFilePath, char *libOpenal)
 {
     if (libOpenal != NULL)
     {
@@ -456,6 +478,36 @@ void setEnvironmentVariables(const char *ldLibPath, const char *originalDir, con
     else if (currentLibraryPath && strlen(currentLibraryPath) > 0)
     {
         snprintf(newLdLibPath, sizeof(newLdLibPath), "%s", currentLibraryPath);
+    }
+
+    if (appImgRoot == NULL && originalDir != NULL && originalDir[0] != '\0')
+    {
+        char llDepsPath[MAX_PATH_LENGTH];
+
+        if (strlen(libraryPath) > 0)
+        {
+            if (libraryPath[0] == PATH_SEPARATOR)
+                snprintf(llDepsPath, sizeof(llDepsPath), "%s", libraryPath);
+            else
+                snprintf(llDepsPath, sizeof(llDepsPath), "%s%c%s", originalDir, PATH_SEPARATOR, libraryPath);
+
+            if (!dirExists(llDepsPath))
+            {
+                log_warn("Library path '%s' does not exist; falling back to default 'll-deps'.", llDepsPath);
+                snprintf(llDepsPath, sizeof(llDepsPath), "%s/ll-deps", originalDir);
+            }
+        }
+        else
+        {
+            snprintf(llDepsPath, sizeof(llDepsPath), "%s/ll-deps", originalDir);
+        }
+
+        if (dirExists(llDepsPath))
+        {
+            if (newLdLibPath[0] != '\0')
+                strcat(newLdLibPath, ":");
+            strcat(newLdLibPath, llDepsPath);
+        }
     }
 
     char *ldLibPathCopy = strdup(ldLibPath);
@@ -491,16 +543,14 @@ void setEnvironmentVariables(const char *ldLibPath, const char *originalDir, con
     {
         if (hasSpaces(confFilePath))
         {
-            log_error("The path \'%s\' for the config file cannot contain spaces.", confFilePath);
-            log_error("The loader will use the default configuration.");
+            log_warn("Configuration file path '%s' contains spaces; the loader will use the default configuration.", confFilePath);
             confFilePath = "";
         }
         else if (!fileExists(confFilePath))
         {
-            log_error("The file \'%s\' does not exist, will be using default config.", confFilePath);
+            log_warn("Configuration file '%s' does not exist; the loader will use the default configuration.", confFilePath);
             confFilePath = "";
         }
-
         setenv(LINUX_LOADER_CONFIG_PATH, confFilePath, 1);
     }
 
@@ -508,36 +558,18 @@ void setEnvironmentVariables(const char *ldLibPath, const char *originalDir, con
     {
         if (hasSpaces(contFilePath))
         {
-            log_error("The path \'%s\' for the controls file cannot contain spaces.", contFilePath);
-            log_error("Controls will use the default controls config.");
+            log_warn("Controls file path '%s' contains spaces; the loader will use the default controls configuration.", contFilePath);
             contFilePath = "";
         }
         else if (!fileExists(contFilePath))
         {
-            log_error("The file \'%s\' does not exist, will try to load controls.ini from the game folder or", contFilePath);
-            log_error("will be using the default controls config.");
+            log_warn("Controls file '%s' does not exist; the loader will use the default controls configuration.", contFilePath);
             contFilePath = "";
         }
-
         setenv(LINUX_LOADER_CONTROLS_PATH, contFilePath, 1);
     }
 
-    if (strlen(contDbFilePath) > 0)
-    {
-        if (hasSpaces(contDbFilePath))
-        {
-            log_error("The path \'%s\' for the gamecontrollerdb.txt file cannot contain spaces.", contDbFilePath);
-            log_error("Additional game controller mappings will not be added.");
-            contDbFilePath = "";
-        }
-        else if (!fileExists(contDbFilePath))
-        {
-            log_error("The file \'%s\' does not exist, additional mapping db will be omitted.", contDbFilePath);
-            contDbFilePath = "";
-        }
-
-        setenv(LINUX_LOADER_CONTROLS_DB_PATH, contDbFilePath, 1);
-    }
+    setDbFileEnv(contDbFilePath);
 
     if (zink && nvidia)
     {
@@ -717,11 +749,7 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
             {
                 filename = "linuxloader.ini";
             }
-#ifdef __linux__
-            snprintf(finalPath, sizeof(finalPath), "%s/%s", path, filename);
-#else
-            snprintf(finalPath, sizeof(finalPath), "%s\\%s", path, filename);
-#endif
+            snprintf(finalPath, sizeof(finalPath), "%s%c%s", path, PATH_SEPARATOR, filename);
             if (createDefaultIni(finalPath))
             {
                 printf("Successfully created configuration file at %s\n", finalPath);
@@ -738,11 +766,7 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
             {
                 filename = "controls.ini";
             }
-#ifdef __linux__
-            snprintf(finalPath, sizeof(finalPath), "%s/%s", path, filename);
-#else
-            snprintf(finalPath, sizeof(finalPath), "%s\\%s", path, filename);
-#endif
+            snprintf(finalPath, sizeof(finalPath), "%s%c%s", path, PATH_SEPARATOR, filename);
             if (createDefaultControlsIni(finalPath))
             {
                 printf("Successfully created controls file at %s\n", finalPath);
@@ -817,13 +841,14 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
             continue;
         }
 
-        if(strcmp(argv[i], "-L") == 0 || strcmp(argv[i], "--library-path") == 0)
+        if (strcmp(argv[i], "-L") == 0 || strcmp(argv[i], "--library-path") == 0)
         {
             if (i + 1 >= argc)
             {
                 break;
             }
             strncpy(libraryPath, argv[i + 1], MAX_PATH_LENGTH);
+            libraryPath[MAX_PATH_LENGTH - 1] = '\0';
             i += 1;
             continue;
         }
@@ -865,12 +890,106 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
         return EXIT_FAILURE;
     }
 
+    char resolvedConfigPath[MAX_PATH_LENGTH] = "";
+
+    if (strlen(extConfigPath) > 0)
+    {
+        const bool isPathAbsolute = (extConfigPath[0] == PATH_SEPARATOR);
+
+        if (!isPathAbsolute)
+        {
+            snprintf(resolvedConfigPath, sizeof(resolvedConfigPath), "%s%c%s",
+                     originalDir, PATH_SEPARATOR, extConfigPath);
+        }
+        else
+        {
+            snprintf(resolvedConfigPath, sizeof(resolvedConfigPath), "%s", extConfigPath);
+        }
+
+        if (!fileExists(resolvedConfigPath))
+        {
+            log_warn("Configuration file '%s' does not exist, will try to load linuxloader.ini from the current folder.",
+                     resolvedConfigPath);
+            resolvedConfigPath[0] = '\0';
+        }
+    }
+
+    if (strlen(resolvedConfigPath) == 0)
+    {
+        snprintf(resolvedConfigPath, sizeof(resolvedConfigPath), "%s%c%s", originalDir, PATH_SEPARATOR, DEFAULT_CONFIG_FILE);
+
+        if (!fileExists(resolvedConfigPath))
+        {
+            resolvedConfigPath[0] = '\0';
+            log_warn("Default configuration file '" DEFAULT_CONFIG_FILE "' does not exist in the current directory.");
+            log_warn("Will try to load from the game folder or use built-in defaults.");
+        }
+    }
+
+    strncpy(extConfigPath, resolvedConfigPath, MAX_PATH_LENGTH);
+    extConfigPath[MAX_PATH_LENGTH - 1] = '\0';
+
+    char resolvedControlsPath[MAX_PATH_LENGTH] = "";
+    if (strlen(extControlsPath) > 0)
+    {
+        const bool isPathAbsolute = (extControlsPath[0] == PATH_SEPARATOR);
+
+        if (!isPathAbsolute)
+        {
+            snprintf(resolvedControlsPath, sizeof(resolvedControlsPath), "%s%c%s",
+                     originalDir, PATH_SEPARATOR, extControlsPath);
+        }
+        else
+        {
+            snprintf(resolvedControlsPath, sizeof(resolvedControlsPath), "%s", extControlsPath);
+        }
+
+        if (!fileExists(resolvedControlsPath))
+        {
+            log_warn("Controls file '%s' does not exist, will try to load controls.ini from the current folder.",
+                     resolvedControlsPath);
+            resolvedControlsPath[0] = '\0';
+        }
+    }
+
+    if (strlen(resolvedControlsPath) == 0)
+    {
+        snprintf(resolvedControlsPath, sizeof(resolvedControlsPath), "%s%c%s",
+                 originalDir, PATH_SEPARATOR, DEFAULT_CONTROLS_FILE);
+
+        if (!fileExists(resolvedControlsPath))
+        {
+            resolvedControlsPath[0] = '\0';
+            log_warn("Default controls file '" DEFAULT_CONTROLS_FILE "' does not exist in the current directory.");
+            log_warn("Will try to load from the game folder or use built-in defaults.");
+        }
+    }
+
+    strncpy(extControlsPath, resolvedControlsPath, MAX_PATH_LENGTH);
+    extControlsPath[MAX_PATH_LENGTH - 1] = '\0';
+
+    char resolvedDbPath[MAX_PATH_LENGTH] = "";
+    if (strlen(extControlsDbPath) > 0)
+    {
+        const bool isPathAbsolute = (extControlsDbPath[0] == PATH_SEPARATOR);
+
+        if (!isPathAbsolute)
+        {
+            snprintf(resolvedDbPath, sizeof(resolvedDbPath), "%s%c%s",
+                     originalDir, PATH_SEPARATOR, extControlsDbPath);
+        }
+        else
+        {
+            snprintf(resolvedDbPath, sizeof(resolvedDbPath), "%s", extControlsDbPath);
+        }
+
+        strncpy(extControlsDbPath, resolvedDbPath, MAX_PATH_LENGTH);
+        extControlsDbPath[MAX_PATH_LENGTH - 1] = '\0';
+    }
+
     int useForceCommandPath = strlen(forcedGamePath) > 0;
-#ifdef __linux__
-    bool commandOnlyElf = useForceCommandPath && strchr(forcedGamePath, '/') == NULL;
-#else
-    bool commandOnlyElf = useForceCommandPath && strchr(forcedGamePath, '\\') == NULL;
-#endif
+    bool commandOnlyElf = useForceCommandPath && strchr(forcedGamePath, PATH_SEPARATOR) == NULL;
+
     if (useForceCommandPath && !commandOnlyElf)
     {
         if (!fileExists(forcedGamePath))
@@ -882,9 +1001,8 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
         extractPathFromProg(forcedGamePath, forcedGameDir, gameELF);
         if (hasSpaces(forcedGameDir))
         {
-            log_warn("The path \'%s\' where the game is located cannot contain spaces.", forcedGameDir);
+            log_warn("The path contains spaces, this most likely will cause issues.");
             log_warn("Please, make sure you don't use spaces in the path.");
-            return EXIT_FAILURE;
         }
 
         if (!dirExists(forcedGameDir))
@@ -974,7 +1092,7 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
 
 #ifdef __linux__
     char *targetedGameDir = strlen(forcedGameDir) ? forcedGameDir : passedGamePath;
-    char *libPath = strdup(findPreloadLibrary(originalDir, PRELOAD_FILE_NAME));
+    char *libPath = strdup(findPreloadLibrary(originalDir, libraryPath, PRELOAD_FILE_NAME));
     if (strcmp(libPath, "") == 0)
     {
         log_error("Error: %s not found in known locations.\n", PRELOAD_FILE_NAME);
@@ -985,7 +1103,7 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
     char *libOpenal = NULL;
     if (strstr(gameELF, "q2satl_lind") != NULL)
     {
-        libOpenal = strdup(findPreloadLibrary(originalDir, PRELOAD_OPENAL));
+        libOpenal = strdup(findPreloadLibrary(originalDir, libraryPath, PRELOAD_OPENAL));
         if (strcmp(libOpenal, "") == 0)
         {
             printf("You might not get sound because libopenal.so.0 was not found.\n");
@@ -1011,8 +1129,8 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
     isCleanElf(command);
 
 #ifdef __linux__
-    setEnvironmentVariables(libPath, originalDir, targetedGameDir, zink, nvidia, extConfigPath, extControlsPath, extControlsDbPath,
-                            libOpenal);
+    setEnvironmentVariables(libPath, originalDir, targetedGameDir, zink, nvidia, libraryPath, extConfigPath, extControlsPath,
+                            extControlsDbPath, libOpenal);
 
     free(libPath);
     if (libOpenal)
@@ -1029,6 +1147,7 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
         strcpy(command, temp);
     }
 #else
+    setDbFileEnv(extControlsDbPath);
     controlsPath = strdup(extControlsPath);
     configPath = strdup(extConfigPath);
 #endif
