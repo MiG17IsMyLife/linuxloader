@@ -166,20 +166,13 @@ Will cause input on analogue input 1 to be clamped as follows:
 
 There are currently no audio options that you can set. If you have a stereo sound card installed then the audio will be downmixed to stereo. If you have a 5.1 sound card installed and the game supports surround sound, each surround channel should be passed through properly and should play sound as it was originally intended.
 
-
-
-
 ### Stand alone mode
 
-Now, you have the option to run the games without copying any files to the game's folder.
-Your system's 32 bit library folder, your current folder and the game's folder  will be added to LD_LIBRARY_PATH env variable,
-so you can han the loader libs in any of those locations.
-
-Passing -c option you can specify the location of the .ini file like this:
-
-```
-./linuxloader -c /my/custom/folder/myconfig.ini
-```
+The compiled version of the loader contain a folder named `ll-deps`. If you copy all the files from the tar.gz to a specific folder you can run the loader as a standalone app. The loader will look for the dependencies in that folder. If there is a missing library for a specific game, you can add it to that folder instead of cluttering the game's folder.
+You can aslo specify a custom folder for the dependencies using the `-L` or `--library-path` options.
+You can also copy the libraries to yout `lib32` folder in you linux distro (not recommended).
+The loader will look in `ll-deps` first.
+Or, you can use the appimage.
 
 ## -g or --gamepath
 With this new option, you can specify the location of the game, where the game's ELF resides.
@@ -207,16 +200,52 @@ The loader will load the ELF in that folder.
 
 You can combine all options.
 
-You can have the needed libraries in the folder where `linuxloader` resides, in the system's 32 bit lib folder or in the game's folder.
-The loader will try to find the files.
-
 If by mistake, you pass both, a full path including an ELF and a path with -g option, the path passed with -g option will be omitted.
 Remember that if the path containg spaces, which is not recommended, pass the path inside double quotes or `\` before the space.
 
-## Creating linuxloader.ini or controls.ini
+## Configuration files (linuxloader.ini and controls.ini)
 
+If you'd like to change game settings, you can create the config files for controls and game configuration using the following commands 
+
+### Linux
+This will create the file named `linuxloader.ini` in the specified folder
+```shell
+./linuxloader --create config /path/to/your/game-folder
 ```
-./linuxloader --create --help
+
+This will create the file named `myconfig.ini` in the specified folder
+```shell
+./linuxloader --create config /path/to/your/game-folder/myconfig.ini
+```
+
+If you'd like to change controls, you can create the config files for controls using the following command
+
+This will create the file named `controls.ini` in the specified folder
+```shell
+./linuxloader --create controls /path/to/your/game-folder
+```
+
+This will create the file named `mycontrols.ini` in the specified folder
+```shell
+./linuxloader --create controls /path/to/your/game-folder/mycontrols.ini
+```
+
+If you specify a configuration file either for the game settings or controls in the command line, this is the behavior the loader will do:
+
+## Linux
+```
+/path/to/linuxloader -g /path/to/game -o /path/to/configfile/myconfig.ini -c /path/to/configfile/mycontrols.ini
+```
+
+***NOTE*** When you specify a config file in the command line, you need to pass the path and the filename as shown above. If you don't provide a filename, the loader will not find the file.
+
+## Config File Loading Order
+
+1. It will try load the specified file from the path you provided.
+2. If the file doesn't exist it will try to load `linuxloader.ini` or `controls.ini` file, in the folder where linuxloader is running.
+3. If that file also doesn't exist it will try to load `linuxloader.ini` or `controls.ini` from the directory where the game executable is located.
+4. If `linuxloader.ini` does not exists in the games's folder, as a fallback, it will try to load `lindberghloader.ini`.
+5. If none of the files exists, it will use the default values.inuxloader --create --help
 ```
 
 Will give you instructions on how to use the new commands.

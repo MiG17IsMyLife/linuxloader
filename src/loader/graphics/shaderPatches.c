@@ -1150,13 +1150,38 @@ char *findLibCg()
         pathsToCheck[0] = getConfig()->libCgPath;
     }
 
-    const char *currentDir = getenv("LINUX_LOADER_CURRENT_DIR");
-    if (currentDir != NULL)
+    const char *envPath = getenv("LINUX_LOADER_CURRENT_DIR");
+    if (pathsToCheck[0] == NULL && envPath != NULL)
     {
-        size_t pathLen = strlen(currentDir) + strlen("/ll-deps/libCg2.so") + 1;
+        size_t pathLen = strlen(envPath) + strlen("/ll-deps/libCg2.so") + 1;
         pathsToCheck[0] = malloc(pathLen);
-        snprintf(pathsToCheck[0], pathLen, "%s/ll-deps/libCg2.so", currentDir);
+        snprintf(pathsToCheck[0], pathLen, "%s/ll-deps/libCg2.so", envPath);
+        if(access(pathsToCheck[0], F_OK) != 0)
+        {
+            free(pathsToCheck[0]);
+            pathsToCheck[0] = NULL;
+        }
     }
+
+    if(pathsToCheck[0] == NULL) 
+    {
+        envPath = getenv("LINUX_LOADER_DEPS_PATH");
+        if (envPath != NULL)
+        {
+            size_t pathLen = strlen(envPath) + strlen("/libCg2.so") + 1;
+            pathsToCheck[0] = malloc(pathLen);
+            snprintf(pathsToCheck[0], pathLen, "%s/libCg2.so", envPath);
+            if(access(pathsToCheck[0], F_OK) != 0)
+            {
+                free(pathsToCheck[0]);
+                pathsToCheck[0] = NULL;
+            }
+        }
+    }
+
+
+
+
 
     for (int i = 0; i < 3; ++i)
     {

@@ -520,11 +520,13 @@ int initConfig(const char *configFilePath)
         {
             strncpy(filePath, CONFIG_PATH, PATH_MAX - 1);
         }
+#ifdef _LINUX_
         else
         {
             // Fallback to legacy path to preserve backward compatibility with the old loader
             strncpy(filePath, "lindbergh.ini", PATH_MAX - 1);
         }
+#endif
     }
     filePath[PATH_MAX - 1] = '\0';
     IniConfig *ini = iniLoad(filePath);

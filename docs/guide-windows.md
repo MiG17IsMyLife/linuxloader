@@ -121,17 +121,48 @@ The loader will load the ELF in that folder.
 
 You can combine all options.
 
+## Configuration files (linuxloader.ini and controls.ini)
 
+If you'd like to change game settings, you can create the config files for controls and game configuration using the following commands 
 
-## Creating linuxloader.ini or controls.ini
-
+### Windows
+This will create the file named `linuxloader.ini` in the specified folder
+```shell
+linuxloader.exe --create config C:\path\to\your\game-folder
 ```
-./linuxloader --create --help
+
+This will create the file named `myconfig.ini in the specified folder
+```shell
+linuxloader.exe --create config C:\path\to\your\game-folder\myconfig.ini
 ```
 
-Will give you instructions on how to use the new commands.
+If you'd like to change controls, you can create the config files for controls using the following command
 
+This will create the file named `controls.ini` in the specified folder
+```shell
+linuxloader.exe --create controls C:\path\to\your\game-folder
+```
 
+This will create the file named `mycontrols.ini` in the specified folder
+```shell
+linuxloader.exe --create controls C:\path\to\your\game-folder\mycontrols.ini
+```
+
+If you specify a configuration file either for the game settings or controls in the command line, this is the behavior the loader will do:
+
+## Windows
+```
+C:\path\to\linuxloader.exe -g C:\path\to\game -o C:\path\to\configfile\myconfig.ini -c C:\path\to\configfile\mycontrols.ini
+```
+
+***NOTE*** When you specify a config file in the command line, you need to pass the path and the filename as shown above. If you don't provide a filename, the loader will not find the file.
+
+## Config File Loading Order
+
+1. It will try load the specified file from the path you provided.
+2. If the file doesn't exist it will try to load `linuxloader.ini` or `controls.ini` file, in the folder where linuxloader is running.
+3. If that file also doesn't exist it will try to load `linuxloader.ini` or `controls.ini` from the directory where the game executable is located.
+4. If none of the files exists, it will use the default values.
 
 ## ID4 and ID5 Card Support
 

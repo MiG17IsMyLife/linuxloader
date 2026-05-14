@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.7]
+### Added
+    - Added a more detailed config file loading instructions to the Linux and Windows guides.
+    - Added instruction on how the dependencies work now in the Linux version.
+### Fixed
+    - Fixed a bug when some games needed CG Shaders and libCg2.so was not found. The path was being passed wrong.
+    - Fixed a bug in the path of the config files for windows.
+
 ## [3.0.6]
 ### Added
     - Added a new logic for the shake and changed the default values. The new logic will account for the game's resolution and I also added a new setting to set a percentage of the screen where the movement should be detected (defaults to 15%). Recreate controls.ini to see the new settings.

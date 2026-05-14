@@ -6,6 +6,7 @@
 #endif
 #undef __x86_64__
 
+#include <ctype.h>
 #include <libgen.h>
 #include <limits.h>
 #include <stdint.h>
@@ -247,6 +248,27 @@ char *myBasename(char *path)
     return (*last != '\0') ? last : path;
 }
 
+bool isPathAbsolute(const char *path)
+{
+    if (path == NULL || path[0] == '\0')
+        return false;
+
+    // POSIX absolute paths (/path) — also works on Windows with mingw/gcc
+    if (path[0] == '/')
+        return true;
+
+#ifdef _WIN32
+    // Windows rooted paths (\path or \\server\share)
+    if (path[0] == '\\')
+        return true;
+    // Windows drive-letter absolute paths (C:\path or C:/path)
+    if (isalpha((unsigned char)path[0]) && path[1] == ':')
+        return true;
+#endif
+
+    return false;
+}
+
 bool dirExists(const char *path)
 {
     struct stat buffer;
@@ -322,7 +344,7 @@ char *findPreloadLibrary(const char *originalDir, const char *libraryPath, char 
 
     if (strlen(libraryPath) > 0)
     {
-        if (libraryPath[0] == PATH_SEPARATOR)
+        if (isPathAbsolute(libraryPath))
             snprintf(libraryPathDir, sizeof(libraryPathDir), "%s", libraryPath);
         else
             snprintf(libraryPathDir, sizeof(libraryPathDir), "%s%c%s", originalDir, PATH_SEPARATOR, libraryPath);
@@ -482,11 +504,11 @@ void setEnvironmentVariables(const char *ldLibPath, const char *originalDir, con
 
     if (appImgRoot == NULL && originalDir != NULL && originalDir[0] != '\0')
     {
-        char llDepsPath[MAX_PATH_LENGTH];
+        char llDepsPath[MAX_PATH_LENGTH] = "";
 
         if (strlen(libraryPath) > 0)
         {
-            if (libraryPath[0] == PATH_SEPARATOR)
+            if (isPathAbsolute(libraryPath))
                 snprintf(llDepsPath, sizeof(llDepsPath), "%s", libraryPath);
             else
                 snprintf(llDepsPath, sizeof(llDepsPath), "%s%c%s", originalDir, PATH_SEPARATOR, libraryPath);
@@ -501,6 +523,9 @@ void setEnvironmentVariables(const char *ldLibPath, const char *originalDir, con
         {
             snprintf(llDepsPath, sizeof(llDepsPath), "%s/ll-deps", originalDir);
         }
+
+        if (strcmp(llDepsPath, "") != 0)
+            setenv("LINUX_LOADER_DEPS_PATH", llDepsPath, 1);
 
         if (dirExists(llDepsPath))
         {
@@ -894,9 +919,9 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
 
     if (strlen(extConfigPath) > 0)
     {
-        const bool isPathAbsolute = (extConfigPath[0] == PATH_SEPARATOR);
+        const bool isPathAbs = isPathAbsolute(extConfigPath);
 
-        if (!isPathAbsolute)
+        if (!isPathAbs)
         {
             snprintf(resolvedConfigPath, sizeof(resolvedConfigPath), "%s%c%s",
                      originalDir, PATH_SEPARATOR, extConfigPath);
@@ -932,9 +957,9 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
     char resolvedControlsPath[MAX_PATH_LENGTH] = "";
     if (strlen(extControlsPath) > 0)
     {
-        const bool isPathAbsolute = (extControlsPath[0] == PATH_SEPARATOR);
+        const bool isPathAbs = isPathAbsolute(extControlsPath);
 
-        if (!isPathAbsolute)
+        if (!isPathAbs)
         {
             snprintf(resolvedControlsPath, sizeof(resolvedControlsPath), "%s%c%s",
                      originalDir, PATH_SEPARATOR, extControlsPath);
@@ -971,9 +996,9 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
     char resolvedDbPath[MAX_PATH_LENGTH] = "";
     if (strlen(extControlsDbPath) > 0)
     {
-        const bool isPathAbsolute = (extControlsDbPath[0] == PATH_SEPARATOR);
+        const bool isPathAbs = isPathAbsolute(extControlsDbPath);
 
-        if (!isPathAbsolute)
+        if (!isPathAbs)
         {
             snprintf(resolvedDbPath, sizeof(resolvedDbPath), "%s%c%s",
                      originalDir, PATH_SEPARATOR, extControlsDbPath);
@@ -999,11 +1024,13 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
         }
 
         extractPathFromProg(forcedGamePath, forcedGameDir, gameELF);
+#ifdef __linux__
         if (hasSpaces(forcedGameDir))
         {
             log_warn("The path contains spaces, this most likely will cause issues.");
             log_warn("Please, make sure you don't use spaces in the path.");
         }
+#endif
 
         if (!dirExists(forcedGameDir))
         {
@@ -1014,11 +1041,13 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
     }
     else if (strlen(passedGamePath) > 0)
     {
+#ifdef __linux__
         if (hasSpaces(passedGamePath))
         {
             log_warn("The path contains spaces, this most likely will cause issues.");
             log_warn("Please, make sure you don't use spaces in the path.");
         }
+#endif
 
         if (!dirExists(passedGamePath))
         {
@@ -1146,6 +1175,7 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
         strcat(temp, command);
         strcpy(command, temp);
     }
+    setenv(LINUX_LOADER_CURRENT_DIR, originalDir, 1);
 #else
     setDbFileEnv(extControlsDbPath);
     controlsPath = strdup(extControlsPath);
