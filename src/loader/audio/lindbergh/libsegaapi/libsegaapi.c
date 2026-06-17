@@ -228,13 +228,13 @@ static void processSends(Buffer *buffer)
 
     int voiceIndex = 0;
 
-    for (uint32_t i = 0; i < buffer->outputFormat.byNumChans; i++)
+    for (unsigned int i = 0; i < buffer->outputFormat.byNumChans; i++)
     {
-        for (uint32_t j = 0; j < MAX_SENDS; j++)
+        for (unsigned int j = 0; j < MAX_SENDS; j++)
         {
             matrix[j][i] = 0;
 
-            debug(1, "Entry channel %d send %d to %s with level %X and channel level %X\n", i, j,
+            debug(1, "Entry channel %u send %u to %s with level %X and channel level %X\n", i, j,
                   getRoutingString(buffer->routing[i][j]), buffer->sendLevels[i][j], buffer->channelVolumes[i]);
 
             if (buffer->routing[i][j] != UNUSED_PORT && buffer->routing[i][j] < OUTPUT_CHANNELS)
@@ -251,15 +251,15 @@ static void processSends(Buffer *buffer)
     }
 
     debug(1, "-- matrix --\n");
-    for (uint32_t j = 0; j < buffer->outputFormat.byNumChans; j++)
+    for (unsigned int j = 0; j < buffer->outputFormat.byNumChans; j++)
     {
-        debug(1, "CHANNEL_%d ", j + 1);
+        debug(1, "CHANNEL_%u ", j + 1);
     }
     debug(1, "\n");
     for (int i = 0; i < voiceIndex; i++)
     {
         debug(1, "%s ", getRoutingString(routes[i]));
-        for (uint32_t j = 0; j < buffer->outputFormat.byNumChans; j++)
+        for (unsigned int j = 0; j < buffer->outputFormat.byNumChans; j++)
         {
             debug(1, "%f ", matrix[i][j]);
         }
@@ -338,15 +338,15 @@ int SEGAAPI_PlayWithSetup(void *hHandle, unsigned int dwNumSendRouteParams, Send
 
     // Buffer *buffer = (Buffer *)hHandle;
 
-    for (uint32_t i = 0; i < dwNumSendRouteParams; i++)
+    for (unsigned int i = 0; i < dwNumSendRouteParams; i++)
         SEGAAPI_SetSendRouting(hHandle, pSendRouteParams[i].dwChannel, pSendRouteParams[i].dwSend,
                                pSendRouteParams[i].dwDest);
 
-    for (uint32_t i = 0; i < dwNumSendLevelParams; i++)
+    for (unsigned int i = 0; i < dwNumSendLevelParams; i++)
         SEGAAPI_SetSendLevel(hHandle, pSendLevelParams[i].dwChannel, pSendLevelParams[i].dwSend,
                              pSendLevelParams[i].dwLevel);
 
-    for (uint32_t i = 0; i < dwNumVoiceParams; i++)
+    for (unsigned int i = 0; i < dwNumVoiceParams; i++)
     {
         switch (pVoiceParams[i].VoiceIoctl)
         {
@@ -379,7 +379,7 @@ int SEGAAPI_PlayWithSetup(void *hHandle, unsigned int dwNumSendRouteParams, Send
         }
     }
 
-    for (uint32_t i = 0; i < dwNumSynthParams; i++)
+    for (unsigned int i = 0; i < dwNumSynthParams; i++)
         SEGAAPI_SetSynthParam(hHandle, pSynthParams[i].param, pSynthParams[i].lPARWValue);
 
     return SEGAAPI_Play(hHandle);
@@ -388,28 +388,23 @@ int SEGAAPI_PlayWithSetup(void *hHandle, unsigned int dwNumSendRouteParams, Send
 PlaybackStatus SEGAAPI_GetPlaybackStatus(void *hHandle)
 {
     HANDLE_CHECK(hHandle, PLAYBACK_STATUS_INVALID);
-
     Buffer *buffer = (Buffer *)hHandle;
 
-    if (buffer->playbackStatus == PLAYBACK_STATUS_PAUSE)
-        return PLAYBACK_STATUS_PAUSE;
+    pthread_mutex_lock(&fAudioMutex);
 
     FAudioVoiceState fAudioVoiceState;
     FAudioSourceVoice_GetState(buffer->fAudioSourceVoice, &fAudioVoiceState, 0);
 
-    if (fAudioVoiceState.BuffersQueued == 0)
+    PlaybackStatus status = buffer->playbackStatus;
+
+    if (status == PLAYBACK_STATUS_ACTIVE && fAudioVoiceState.BuffersQueued == 0)
     {
-        return PLAYBACK_STATUS_STOP;
+        status = PLAYBACK_STATUS_STOP;
+        buffer->playbackStatus = status;
     }
 
-    if (!buffer->bDoContinuousLooping &&
-        fAudioVoiceState.SamplesPlayed >=
-            bytesToSamples(buffer, buffer->size < buffer->endOffset ? buffer->size : buffer->endOffset))
-    {
-        return PLAYBACK_STATUS_STOP;
-    }
-
-    return buffer->playbackStatus;
+    pthread_mutex_unlock(&fAudioMutex);
+    return status;
 }
 
 int SEGAAPI_SetFormat(void *hHandle, OutputFormat *pFormat)
@@ -621,7 +616,7 @@ int SEGAAPI_SetPlaybackPosition(void *hHandle, unsigned int dwPlaybackPos)
     }
 
     int status = SEGAAPI_GetPlaybackStatus(hHandle);
-    char *statusString;
+    char *statusString = "UNKNOWN";
     switch (status)
     {
     case PLAYBACK_STATUS_STOP:
@@ -637,11 +632,9 @@ int SEGAAPI_SetPlaybackPosition(void *hHandle, unsigned int dwPlaybackPos)
         statusString = "PLAYBACK_STATUS_INVALID";
         break;
     default:
-        statusString = "UNKNOWN";
         break;
     }
     // Retrofan Test
-    // if (buffer->fAudioFormat.nChannels == 1)
     if (buffer->bDoContinuousLooping && status == PLAYBACK_STATUS_STOP && buffer->fAudioFormat.nChannels == 1)
     {
         // printf("RETURNED SEGAAPI_SetPlaybackPosition(%p, %d) Looping %d Status %s\n", hHandle, dwPlaybackPos,
@@ -813,6 +806,8 @@ int SEGAAPI_UpdateBuffer(void *hHandle, unsigned int dwStartOffset, unsigned int
     if (buffer->updateOutputFormat)
         return SEGA_SUCCESS;
 
+    pthread_mutex_lock(&fAudioMutex);
+
     FAudioSourceVoice_FlushSourceBuffers(buffer->fAudioSourceVoice);
 
     // memset(buffer->fAudioBuffer, 0, sizeof(FAudioBuffer));
@@ -835,6 +830,8 @@ int SEGAAPI_UpdateBuffer(void *hHandle, unsigned int dwStartOffset, unsigned int
     }
 
     FAudioSourceVoice_SubmitSourceBuffer(buffer->fAudioSourceVoice, &buffer->fAudioBuffer, NULL);
+
+    pthread_mutex_unlock(&fAudioMutex);
 
     return SEGA_SUCCESS;
 }
@@ -887,7 +884,7 @@ int SEGAAPI_SetSynthParamMultiple(void *hHandle, unsigned int dwNumParams, Synth
 
     // Buffer *buffer = (Buffer *)hHandle;
 
-    for (uint32_t i = 0; i < dwNumParams; i++)
+    for (unsigned int i = 0; i < dwNumParams; i++)
     {
         SEGAAPI_SetSynthParam(hHandle, pSynthParams[i].param, pSynthParams[i].lPARWValue);
     }
@@ -902,7 +899,7 @@ int SEGAAPI_GetSynthParamMultiple(void *hHandle, unsigned int dwNumParams, Synth
 
     Buffer *buffer = (Buffer *)hHandle;
 
-    for (uint32_t i = 0; i < dwNumParams; i++)
+    for (unsigned int i = 0; i < dwNumParams; i++)
     {
         pSynthParams[i].lPARWValue = buffer->synthParams[pSynthParams[i].param];
     }
@@ -1098,7 +1095,7 @@ unsigned int SEGAAPI_GetIOVolume(SoundBoardIO dwPhysIO)
 {
     float volume;
     FAudioVoice_GetVolume(fAudioMasteringVoice, &volume);
-    return (int)(volume * (float)VOL_MAX);
+    return (int)(volume * VOL_MAX);
 }
 
 void SEGAAPI_SetLastStatus(int LastStatus)
