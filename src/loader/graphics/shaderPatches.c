@@ -570,14 +570,12 @@ void gl_ProgramStringARB(int target, int program_fmt, int program_len, char *pro
         {
             if (getConfig()->GPUVendor == NVIDIA_GPU)
                 newProgram = program;
-            else if (getConfig()->GPUVendor == ATI_GPU)
-                newProgram = replaceInBlock(program, orVsAti, orVsAtiCount, "", "");
             else
                 newProgram = replaceInBlock(program, orVsMesa, orVsMesaCount, "", "");
         }
         else if (target == GL_FRAGMENT_PROGRAM_ARB)
         {
-            if (getConfig()->GPUVendor == NVIDIA_GPU || getConfig()->GPUVendor == ATI_GPU)
+            if (getConfig()->GPUVendor == NVIDIA_GPU)
                 newProgram = replaceInBlock(program, orFsNvidia, orFsNvidiaCount, "", "");
             else
                 newProgram = replaceInBlock(program, orFsMesa, orFsMesaCount, "", "");
@@ -645,16 +643,8 @@ void gl_ProgramStringARB(int target, int program_fmt, int program_len, char *pro
         program_to_free = newProgram;
 
     newProgramLen = strlen(newProgram);
-    glad_glProgramStringARB(target, program_fmt, newProgramLen, newProgram);
 
-    // char filename[50];
-    // static int idx = 0;
-    // FILE *f;
-    // sprintf(filename, "%04d-sha-%d-%d.prg", idx, target, program_fmt);
-    // f = fopen(filename, "w");
-    // fwrite(newProgram, 1, newProgramLen, f);
-    // fclose(f);
-    // idx++;
+    glad_glProgramStringARB(target, program_fmt, newProgramLen, newProgram);
 
     if (gGrp == GROUP_VF5)
     {

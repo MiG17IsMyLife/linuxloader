@@ -205,7 +205,6 @@ int setFreeplay(FILE *eeprom, int freeplay)
 int fixCreditSection(FILE *eeprom)
 {
     eepromBuffer[eepromOffsetTable[CREDIT].offset + 36] = 0;
-    eepromBuffer[eepromOffsetTable[CREDIT].offset + 39] = 0;
     addCRCtoBuffer(CREDIT);
     if (writeSectiontoFile(eeprom, CREDIT) != 0)
     {

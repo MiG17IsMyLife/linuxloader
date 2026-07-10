@@ -1,10 +1,10 @@
+#include <glad/gl.h>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
 #include <dlfcn.h>
 #include <stdbool.h>
-#include <GL/glx.h>
 #include "loader/patching/flowControl.h"
 #endif
 
@@ -14,6 +14,7 @@
 #include "crossHair.h"
 #include "blitStretching.h"
 #include "fpsLimiter.h"
+#include "overlayMsgs.h"
 #include "loader/hardware/lindbergh/touchScreen.h"
 #include "sdlCalls.h"
 #include "../log/log.h"
@@ -71,33 +72,6 @@ XVisualInfo *bridgeGlxChooseVisual(Display *dpy, int screen, int *attribList)
     }
     return vi;
 }
-
-// GLXContext bridgeGlxCreateContext(Display *dpy, XVisualInfo *vis, GLXContext shareList, bool direct)
-// {
-//     if (!getSDLWindow())
-//     {
-//         startSDL();
-//     }
-
-//     if (!getSDLWindow())
-//     {
-//         log_error("Failed to create dummy window for context creation");
-//         return NULL;
-//     }
-
-//     // Handle context sharing for PBuffers
-//     SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, shareList != NULL ? 1 : 0);
-
-//     SDL_GLContext ctx = SDL_GL_CreateContext(getSDLWindow());
-//     if (!ctx)
-//     {
-//         log_error("glXCreateContext failed: %s\n", SDL_GetError());
-//         return NULL;
-//     }
-
-//     log_debug("Created OpenGL Context: %p\n", ctx);
-//     return (GLXContext)ctx;
-// }
 
 GLXContext bridgeGlxCreateContext(Display *dpy, XVisualInfo *vis, GLXContext shareList, bool direct)
 {
@@ -364,7 +338,6 @@ GLXContext bridgeGlxCreateContextWithConfigSGIX(Display *dpy, GLXFBConfig config
 
 bool bridgeGlxQueryExtension(Display *dpy, const char *extList)
 {
-    printf("glxQueryExtension: %s\n", extList);
     return true;
 }
 
@@ -381,12 +354,12 @@ void bridgegluPerspective(double fovy, double aspect, double zNear, double zFar)
     m[10] = (zFar + zNear) / (zNear - zFar);
     m[11] = -1.0;
     m[14] = (2.0 * zFar * zNear) / (zNear - zFar);
-    glMultMatrixd(m);
+    glad_glMultMatrixd(m);
 }
 
 void bridgegluOrtho2D(double left, double right, double bottom, double top)
 {
-    glOrtho(left, right, bottom, top, -1.0, 1.0);
+    glad_glOrtho(left, right, bottom, top, -1.0, 1.0);
 }
 
 void bridgegluLookAt(double eyeX, double eyeY, double eyeZ, double centerX, double centerY, double centerZ, double upX, double upY,
@@ -420,8 +393,8 @@ void bridgegluLookAt(double eyeX, double eyeY, double eyeZ, double centerX, doub
     u[1] = s[2] * f[0] - s[0] * f[2];
     u[2] = s[0] * f[1] - s[1] * f[0];
     double mat[16] = {s[0], u[0], -f[0], 0, s[1], u[1], -f[1], 0, s[2], u[2], -f[2], 0, 0, 0, 0, 1};
-    glMultMatrixd(mat);
-    glTranslated(-eyeX, -eyeY, -eyeZ);
+    glad_glMultMatrixd(mat);
+    glad_glTranslated(-eyeX, -eyeY, -eyeZ);
 }
 
 char glubuffer[64];
@@ -454,6 +427,8 @@ void bridgeGlxSwapBuffers(Display *dpy, GLXDrawable drawable)
         renderCrosshairs();
 
     blitStretch();
+    overlayInit();
+    overlayRender();
 
     pollEvents();
 
@@ -467,6 +442,7 @@ void bridgeGlxSwapBuffers(Display *dpy, GLXDrawable drawable)
     localFps = calculateFps();
     sprintf(windowTitle, "%s - FPS: %.2f", getGameName(), localFps);
     SDL_SetWindowTitle(getSDLWindow(), windowTitle);
+    fpsOverlayUpdateFps(localFps);
 
     if (gId == QUIZ_AXA_SBMS || gId == QUIZ_AXA_SBUR_LIVE)
         mj4TouchHolding();

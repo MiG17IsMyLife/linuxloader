@@ -46,11 +46,30 @@ char *controlsPath = NULL;
 char *configPath = NULL;
 
 // List of all linuxloader executables known, not including the test executables
-char *games[] = {"a.elf",    "abc",     "apacheM.elf",   "chopperM.elf", "drive.elf",
-                 "dsr",      "gsevo",   "hod4M.elf",     "hodexRI.elf",  "hummer_Master.elf",
-                 "id4.elf",  "id5.elf", "Jennifer",      "lgj_final",    "lgjsp_app",
-                 "main.exe", "mj4",     "q2satl_lind",   "ramboM.elf",   "vf5",
-                 "vsg",      "vt3",     "vt3_Lindbergh", "END"};
+char *games[] = {"a.elf",
+                 "abc",
+                 "apacheM.elf",
+                 "chopperM.elf",
+                 "drive.elf",
+                 "dsr",
+                 "gsevo",
+                 "hod4M.elf",
+                 "hodexRI.elf",
+                 "hummer_Master.elf",
+                 "id4.elf",
+                 "id5.elf",
+                 "Jennifer",
+                 "lgj_final",
+                 "lgjsp_app",
+                 "main.exe",
+                 "mj4",
+                 "q2satl_lind",
+                 "ramboM.elf",
+                 "vf5",
+                 "vsg",
+                 "vt3",
+                 "vt3_Lindbergh",
+                 "END"};
 
 /**
  * An array containin clean games elf's CRC32
@@ -531,7 +550,7 @@ void setEnvironmentVariables(const char *ldLibPath, const char *originalDir, con
         {
             if (newLdLibPath[0] != '\0')
                 strcat(newLdLibPath, ":");
-            strcat(newLdLibPath, llDepsPath);
+            // strcat(newLdLibPath, llDepsPath);
         }
     }
 
@@ -551,8 +570,9 @@ void setEnvironmentVariables(const char *ldLibPath, const char *originalDir, con
 
     if (gameDir && gameDir[0] != '\0' && pathsDiffer(originalDir, gameDir) && pathsDiffer(tmpLibPath, gameDir))
     {
-        strcat(newLdLibPath, ":");
-        strcat(newLdLibPath, gameDir);
+        char libDir[MAX_PATH_LENGTH];
+        snprintf(libDir, sizeof(libDir), ":%s/%s",originalDir,gameDir);
+        strcat(newLdLibPath, libDir);
     }
 
     free(ldLibPathCopy);
@@ -561,6 +581,13 @@ void setEnvironmentVariables(const char *ldLibPath, const char *originalDir, con
 
     if (newLdLibPath[0] == ':')
         memmove(newLdLibPath, newLdLibPath + 1, strlen(newLdLibPath));
+
+    if (elfCrc == 0x4143F6B4)
+    {
+        char libDir[MAX_PATH_LENGTH];
+        snprintf(libDir, sizeof(libDir), ":../data/drv/cri/lindbergh/libs");
+        strcat(newLdLibPath, libDir);
+    }
 
     setenv("LD_LIBRARY_PATH", newLdLibPath, 1);
 

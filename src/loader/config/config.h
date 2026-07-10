@@ -294,7 +294,6 @@ typedef struct
     GpuType GPUVendor;
     char *GPUVendorString;
     JVSIOType jvsIOType;
-    int outrunLensGlareEnabled;
     int hummerFlickerFix;
     int keepAspectRatio;
     int fpsLimiter;
@@ -343,6 +342,8 @@ typedef struct
     char p2CrossHairPath[MAX_PATH_LENGTH];
     int customCrossHairWidth;
     int customCrossHairHeight;
+    int fpsOverlayEnabled;
+    int fpsOverlayPosition;
 } EmulatorConfig;
 
 #ifdef __cplusplus

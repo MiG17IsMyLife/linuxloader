@@ -41,7 +41,6 @@ extern "C"
     const int32_t **__ctype_toupper_loc(void);
     size_t __ctype_get_mb_cur_max();
 
-
     void __assert_fail(const char *assertion, const char *file, unsigned int line, const char *function);
     int *__errno_location();
     void __libc_freeres();

@@ -10,6 +10,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <ctime>
+#include <setjmp.h>
 #include <process.h>
 #include <sys/time.h>
 #include <sys/utime.h>
@@ -17,6 +18,7 @@
 #include <windows.h>
 #include <time.h>
 #include <unistd.h>
+#include <cmath>
 
 #define MAP(name, func) SymbolResolver::GetInstance().RegisterVTable(name, reinterpret_cast<void *>(func))
 
@@ -131,6 +133,7 @@ namespace LibcBridge
         MAP("__moddi3", __moddi3);
         MAP("__fixunsdfdi", __fixunsdfdi);
         MAP("__fixunssfdi", __fixunssfdi);
+        MAP("_setjmp", bridgeSetjmp);
 
         // system
         MAP("system", bridgeSystem);
@@ -187,6 +190,8 @@ namespace LibcBridge
         MAP("mmap", bridgeMmap);
         MAP("munmap", bridgeMunmap);
 
+        MAP("nice", bridgeNice);
+
         // Library handles
         MAP("dlopen", sharedDlopen);
         MAP("dlsym", sharedDlsym);
@@ -227,6 +232,21 @@ namespace LibcBridge
         MAP("ungetwc", bridgeUngetwc);
         MAP("fgetwc", bridgeGetwc);
         MAP("fputwc", bridgePutwc);
+    }
+
+    int __attribute__((naked)) bridgeSetjmp(int *env)
+    {
+        asm volatile("mov 4(%esp), %edx\n\t"
+                     "mov %ebx, (%edx)\n\t"
+                     "mov %esi, 4(%edx)\n\t"
+                     "mov %edi, 8(%edx)\n\t"
+                     "mov %ebp, 12(%edx)\n\t"
+                     "lea 4(%esp), %ecx\n\t"
+                     "mov %ecx, 16(%edx)\n\t"
+                     "mov (%esp), %eax\n\t"
+                     "mov %eax, 20(%edx)\n\t"
+                     "xor %eax, %eax\n\t"
+                     "ret\n\t");
     }
 
     void bridgeAbort()
@@ -414,12 +434,12 @@ namespace LibcBridge
 
     int bridgeIsinf(double x)
     {
-        return __builtin_isinf(x);
+        return std::isinf(x) ? 1 : 0;
     }
 
     int bridgeIsnan(double x)
     {
-        return __builtin_isnan(x);
+        return std::isnan(x) ? 1 : 0;
     }
 
     int bridgeWcscoll_l(const uint32_t *s1, const uint32_t *s2, void *locale)
@@ -1125,6 +1145,12 @@ namespace LibcBridge
             return 0;
         }
         return -1;
+    }
+
+    int bridgeNice(int inc)
+    {
+        log_trace("Intercepted nice: inc=%d", inc);
+        return 0;
     }
 
     int bridgePoll(struct pollfd *fds, int nfds, int timeout)

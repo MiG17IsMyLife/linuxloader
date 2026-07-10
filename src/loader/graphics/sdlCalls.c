@@ -21,6 +21,8 @@
 #include "blitStretching.h"
 #include "../config/config.h"
 #include "crossHair.h"
+#include "overlayMsgs.h"
+#include "fpsLimiter.h"
 #include "customCursor.h"
 #include "../input/sdlInput.h"
 #include "../hardware/lindbergh/jvs.h"
@@ -135,9 +137,16 @@ void startSDL()
         SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 1);
     }
 
+    int windowWidth = gWidth;
+    if (gGrp == GROUP_OUTRUN && getConfig()->width == 640)
+    {
+        gameIsOutrunChihiroMode = 1;
+        gWidth = 800;
+    }
+
     uint32_t windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN;
 
-    g_SdlWindow = SDL_CreateWindow(getGameName(), gWidth, gHeight, windowFlags);
+    g_SdlWindow = SDL_CreateWindow(getGameName(), windowWidth, gHeight, windowFlags);
 
     if (g_SdlWindow)
     {
@@ -207,7 +216,7 @@ void startSDL()
     else if (gGrp != GROUP_LGJ)
         SDL_SetWindowMaximumSize(g_SdlWindow, displayMode->w, displayMode->h);
 
-    SDL_SetWindowMinimumSize(g_SdlWindow, gWidth, gHeight);
+    SDL_SetWindowMinimumSize(g_SdlWindow, windowWidth, gHeight);
 
     // Hacky way to make AxA games render the characters properly
     if (gId == QUIZ_AXA_SBMS || gId == QUIZ_AXA_SBUR_LIVE)
@@ -360,6 +369,11 @@ void pollEvents()
                         }
                         break;
                     }
+                }
+                if (event.key.key == SDLK_F12)
+                {
+                    fpsOverlayToggleVisibility();
+                    return;
                 }
             }
             case SDL_EVENT_KEY_UP:

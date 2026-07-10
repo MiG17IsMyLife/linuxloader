@@ -105,6 +105,7 @@ int bridgeXSync(Display *dpy, int discard)
 {
     return 1;
 }
+
 int bridgeXFlush(Display *dpy)
 {
     return 1;
@@ -113,12 +114,15 @@ int bridgeXFlush(Display *dpy)
 void bridgeXLockDisplay(Display *dpy)
 {
 }
+
 void bridgeXUnlockDisplay(Display *dpy)
 {
 }
+
 void bridgeXSetErrorHandler(void *handler)
 {
 }
+
 int bridgeXGetErrorText(Display *dpy, int code, char *buffer, int length)
 {
     if (buffer && length > 0)
@@ -427,6 +431,7 @@ int bridgeXFreeCursor(Display *dpy, Cursor cursor)
 {
     return 1;
 }
+
 int bridgeXDefineCursor(Display *dpy, Window w, Cursor c)
 {
     // if (getConfig()->crc32 == QUIZ_AXA_SBMS || getConfig()->crc32 == QUIZ_AXA_SBUR_LIVE)

@@ -1,8 +1,10 @@
 #pragma once
 
+#include <stdint.h>
 #include <stdio.h>
 
 void setVariable(size_t address, size_t value);
+void setVariable16(size_t address, uint16_t value);
 void patchMemoryFromString(size_t address, char *value);
 void detourFunction(size_t address, void *function);
 void replaceCallAtAddress(size_t address, void *function);

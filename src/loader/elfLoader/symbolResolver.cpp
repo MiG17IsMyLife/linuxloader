@@ -3,6 +3,18 @@
 #define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
+
+// Declare Win7+ DLL search path APIs in case MinGW headers don't expose them
+#ifndef LOAD_LIBRARY_SEARCH_DEFAULT_DIRS
+#define LOAD_LIBRARY_SEARCH_DEFAULT_DIRS 0x00001000
+extern "C"
+{
+    typedef PVOID DLL_DIRECTORY_COOKIE;
+    __declspec(dllimport) BOOL WINAPI SetDefaultDllDirectories(DWORD DirectoryFlags);
+    __declspec(dllimport) DLL_DIRECTORY_COOKIE WINAPI AddDllDirectory(PCWSTR NewDirectory);
+    __declspec(dllimport) BOOL WINAPI RemoveDllDirectory(DLL_DIRECTORY_COOKIE Cookie);
+}
+#endif
 #include <winsock2.h>
 #include <objbase.h>
 #include <excpt.h>
@@ -142,11 +154,9 @@ void SymbolResolver::InitSearchPaths(const std::string &libraryPathParam, const 
 {
     m_LibrarySearchPaths.clear();
 
-    if (!libraryPathParam.empty())
-    {
-        m_LibrarySearchPaths.push_back(libraryPathParam);
-        log_info("Added library search path (parameter): %s", libraryPathParam.c_str());
-    }
+    SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+
+    DLL_DIRECTORY_COOKIE depsCookie = nullptr;
 
     char exePath[MAX_PATH];
     if (GetModuleFileNameA(NULL, exePath, MAX_PATH))
@@ -155,16 +165,29 @@ void SymbolResolver::InitSearchPaths(const std::string &libraryPathParam, const 
         size_t lastSlash = exeDir.find_last_of("\\/");
         if (lastSlash != std::string::npos)
         {
-            exeDir = exeDir.substr(0, lastSlash);
-            m_LibrarySearchPaths.push_back(exeDir);
-            log_info("Added library search path (exe dir): %s", exeDir.c_str());
+            m_ExeDir = exeDir.substr(0, lastSlash);
+            m_LibrarySearchPaths.push_back(m_ExeDir);
+            log_info("Added library search path (exe dir): %s", m_ExeDir.c_str());
 
-            std::string depsDir = exeDir + "\\ll-deps";
+            std::string depsDir = m_ExeDir + "\\ll-deps";
             m_LibrarySearchPaths.push_back(depsDir);
+            m_DllSearchBase = depsDir;
             log_info("Added library search path (deps dir): %s", depsDir.c_str());
 
-            SetDllDirectoryA(depsDir.c_str());
+            std::wstring depsDirW(depsDir.begin(), depsDir.end());
+            depsCookie = AddDllDirectory(depsDirW.c_str());
         }
+    }
+
+    if (!libraryPathParam.empty())
+    {
+        m_LibrarySearchPaths.push_back(libraryPathParam);
+        m_DllSearchBase = libraryPathParam;
+        log_info("Added library search path (parameter): %s", libraryPathParam.c_str());
+        if (depsCookie)
+            RemoveDllDirectory(depsCookie);
+        std::wstring libraryPathW(libraryPathParam.begin(), libraryPathParam.end());
+        AddDllDirectory(libraryPathW.c_str());
     }
 
     if (!gameElfPath.empty())
@@ -193,10 +216,28 @@ void SymbolResolver::InitSearchPaths(const std::string &libraryPathParam, const 
             std::string axaLibDir = gameDir.substr(0, lastSlash) + "\\..\\dso\\q2satl_lind\\release";
             m_LibrarySearchPaths.push_back(axaLibDir);
             log_info("Added library search path (q2satl lib dir): %s", axaLibDir.c_str());
+
+            std::string phLibDir = gameDir.substr(0, lastSlash) + "\\data\\drv\\cri\\lindbergh\\libs";
+            m_LibrarySearchPaths.push_back(phLibDir);
+            log_info("Added library search path (Primeval Hunt lib dir): %s", phLibDir.c_str());
+
         }
     }
-
     log_info("Initialized %zu library search paths", m_LibrarySearchPaths.size());
+    log_info("DLL search base set to: %s", m_DllSearchBase.c_str());
+}
+
+void SymbolResolver::AddDllSearchSubPath(const std::string &subPath)
+{
+    if (m_DllSearchBase.empty() || subPath.empty())
+        return;
+
+    std::string fullPath = m_DllSearchBase + "\\" + subPath;
+    m_LibrarySearchPaths.push_back(fullPath);
+    std::wstring fullPathW(fullPath.begin(), fullPath.end());
+    AddDllDirectory(fullPathW.c_str());
+    printf("[loader] Added subdirectory to DLL search path: %s\n", fullPath.c_str());
+    log_info("Added subdirectory to DLL search path: %s", fullPath.c_str());
 }
 
 void SymbolResolver::RegisterLibrary(const std::string &linuxName, const std::string &windowsName)

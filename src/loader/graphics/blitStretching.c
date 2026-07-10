@@ -34,6 +34,8 @@ extern SDL_Window *g_SdlWindow;
 
 int blitWidth = 0;
 int blitHeight = 0;
+int renderWidth = 0;
+int renderHeight = 0;
 
 int gameIsOutrunChihiroMode = 0;
 
@@ -50,10 +52,6 @@ void initBlitting()
 {
     blitSetWidthandHeightSize();
     blitInitializeFbo();
-    dest.gameScale = 1.0f;
-
-    if(gGrp == GROUP_OUTRUN && getConfig()->width == 640)
-        gameIsOutrunChihiroMode = 1;
 }
 
 void blitSetWidthandHeightSize()
@@ -86,6 +84,9 @@ void blitSetWidthandHeightSize()
         blitWidth = gWidth;
         blitHeight = gHeight;
     }
+
+    renderWidth = blitWidth;
+    renderHeight = blitHeight;
 }
 
 int blitInitializeFbo()
@@ -98,6 +99,15 @@ int blitInitializeFbo()
         log_error("Failed to generate FBO texture.\n");
         return 0;
     }
+
+    GLint maxTexSize = 0;
+    glad_glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTexSize);
+    if (blitWidth > maxTexSize || blitHeight > maxTexSize)
+    {
+        log_error("FBO texture size %dx%d exceeds GL_MAX_TEXTURE_SIZE %d! SSAA may be silently clamped.",
+                  blitWidth, blitHeight, maxTexSize);
+    }
+
     glad_glBindTexture(GL_TEXTURE_2D, fboTextureId);
     glad_glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, blitWidth, blitHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glad_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -139,7 +149,9 @@ void blitStretch()
         static int firstTime = 1;
         if (firstTime)
         {
-            SDL_SetWindowSize(g_SdlWindow, gWidth, gHeight);
+            // For Chihiro mode, don't resize window (hook redirects FB0 to FBO)
+            if (!gameIsOutrunChihiroMode)
+                SDL_SetWindowSize(g_SdlWindow, gWidth, gHeight);
             firstTime = 0;
         }
         SDL_GetWindowSizeInPixels(g_SdlWindow, &drawableW, &drawableH);
@@ -181,21 +193,37 @@ void blitStretch()
             glad_glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fboTextureId, 0);
             glad_glBindFramebuffer(GL_FRAMEBUFFER, 0);
         }
-        // Bind both to fboId first (workaround for some drivers rejecting GL_READ_FRAMEBUFFER)
-        glad_glBindFramebuffer(GL_FRAMEBUFFER, fboId);
-        CHECK_GL("bind GL_FRAMEBUFFER fboId first blit");
-        glad_glBindFramebuffer(GL_READ_FRAMEBUFFER, 0); // Assuming game drew to default FBO
-        CHECK_GL("bind GL_READ_FRAMEBUFFER 0 first blit");
 
-        glad_glReadBuffer(GL_BACK);
-        CHECK_GL("readbuffer GL_BACK");
+        // First blit: copy from framebuffer to FBO
+        // In Chihiro mode, game rendered to our FBO via glBindFramebufferEXT hook, so skip
+        if (!gameIsOutrunChihiroMode)
+        {
+                // Non-MSAA path: direct blit from FB0 → fboId
+                glad_glBindFramebuffer(GL_FRAMEBUFFER, fboId);
+                CHECK_GL("bind GL_FRAMEBUFFER fboId first blit");
+                glad_glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+                CHECK_GL("bind GL_READ_FRAMEBUFFER 0 first blit");
 
-        glad_glBlitFramebuffer(0, 0, blitWidth, blitHeight, 0, 0, blitWidth, blitHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-        CHECK_GL("first blit to fboId");
+                glad_glReadBuffer(GL_BACK);
+                CHECK_GL("readbuffer GL_BACK");
 
-        float gameAspect = (float)blitWidth / (float)blitHeight;
+                // Source: read from FB0 at game render resolution (pre-SSAA).
+                // Destination: write to FBO at SSAA resolution (upscale with GL_LINEAR).
+                // When SSAA is off, renderWidth==blitWidth and this is a 1:1 copy.
+                glad_glBlitFramebuffer(0, 0, renderWidth, renderHeight, 0, 0, blitWidth, blitHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+                CHECK_GL("first blit to fboId");
+        }
+
+        float gameAspect;
+        if (gameIsOutrunChihiroMode)
+            gameAspect = 640.0f / 480.0f; // post-crop aspect (center 640px of 800-wide game)
+        else
+            gameAspect = (float)blitWidth / (float)blitHeight;
         float windowAspect = (float)drawableW / (float)drawableH;
 
+        // Reset dest each frame to prevent stale offsets after window resize / fullscreen toggle
+        dest.X = 0;
+        dest.Y = 0;
         dest.W = drawableW;
         dest.H = drawableH;
 
@@ -220,25 +248,24 @@ void blitStretch()
         glad_glClear(GL_COLOR_BUFFER_BIT);
         CHECK_GL("glClear on default framebuffer");
 
-        // Second blit: bind both to fboId first
-        glad_glBindFramebuffer(GL_FRAMEBUFFER, fboId);
-        CHECK_GL("bind GL_FRAMEBUFFER fboId second blit");
-        glad_glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // We want to draw to 0
-        CHECK_GL("bind DRAW 0 second blit");
+            // Non-MSAA path: direct scaled blit fboId → FB 0
+            glad_glBindFramebuffer(GL_FRAMEBUFFER, fboId);
+            CHECK_GL("bind GL_FRAMEBUFFER fboId second blit");
+            glad_glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // We want to draw to 0
+            CHECK_GL("bind DRAW 0 second blit");
 
-        if(gameIsOutrunChihiroMode)
-        {
-            glad_glBlitFramebuffer(65, 0, blitWidth - 65, blitHeight, dest.X, dest.Y, dest.X + dest.W, dest.Y + dest.H, GL_COLOR_BUFFER_BIT,
-                               GL_LINEAR);
-        }
-        else
-        {
-            glad_glBlitFramebuffer(0, 0, blitWidth, blitHeight, dest.X, dest.Y, dest.X + dest.W, dest.Y + dest.H, GL_COLOR_BUFFER_BIT,
-                               GL_LINEAR);            
-        }
-
-        
-        CHECK_GL("second blit (GL_LINEAR scaled) to default framebuffer");
+            if(gameIsOutrunChihiroMode)
+            {
+                // Crop center 640px from 800-wide FBO: remove 80px left, 80px right
+                glad_glBlitFramebuffer(80, 0, 720, blitHeight, dest.X, dest.Y, dest.X + dest.W, dest.Y + dest.H, GL_COLOR_BUFFER_BIT,
+                                   GL_LINEAR);
+            }
+            else
+            {
+                glad_glBlitFramebuffer(0, 0, blitWidth, blitHeight, dest.X, dest.Y, dest.X + dest.W, dest.Y + dest.H, GL_COLOR_BUFFER_BIT,
+                                   GL_LINEAR);
+            }
+            CHECK_GL("second blit (GL_LINEAR scaled) to default framebuffer");
 
         // RESTORE STATE
         if (oldScissorTest)

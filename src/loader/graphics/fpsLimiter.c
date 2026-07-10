@@ -1,16 +1,30 @@
 #include <sys/time.h>
 #include <unistd.h>
+#include <string.h>
+#include <stdio.h>
 
 #include "../config/config.h"
 #include "../graphics/fpsLimiter.h"
+#include "../graphics/overlayMsgs.h"
 
 FpsLimit fpsLimit;
 double lastTime = 0.0;
 int frameCount = 0;
 double fps = 0.0;
 
+static int gFpsSlot = -1;
+static int gFpsPosition = 0;
+static bool gFpsVisible = false;
+
 void initFpsLimiter()
 {
+    /* Read overlay config: position from config, visibility from config */
+    gFpsPosition = getConfig()->fpsOverlayPosition;
+    if (gFpsPosition < 0) gFpsPosition = 0;
+    if (gFpsPosition > 3) gFpsPosition = 3;
+
+    gFpsVisible = (getConfig()->fpsOverlayEnabled != 0);
+
     if (getConfig()->fpsLimiter == 1)
     {
         fpsLimit.targetFrameTime = 1000000 / getConfig()->fpsTarget;
@@ -77,4 +91,51 @@ void fpsLimiter(FpsLimit *stats)
             stats->frameOverhead = 0;
         }
     }
+}
+
+void fpsOverlayUpdateFps(double fps)
+{
+    char fpsStr[64];
+    snprintf(fpsStr, sizeof(fpsStr), "FPS: %.2f", fps);
+
+    if (gFpsSlot < 0)
+    {
+        int pos = gFpsPosition;
+        if (pos < 0) pos = 0;
+        if (pos > 3) pos = 3;
+        gFpsSlot = overlayShowMessage(fpsStr, 0, (OverlayPosition)pos);
+
+        if (!gFpsVisible && gFpsSlot >= 0)
+            overlaySetMessageVisible(gFpsSlot, false);
+    }
+    else
+    {
+        overlayUpdateMessageText(gFpsSlot, fpsStr);
+    }
+}
+
+void fpsOverlayToggleVisibility(void)
+{
+    if (gFpsSlot < 0)
+    {
+        gFpsVisible = !gFpsVisible;
+        return;
+    }
+    gFpsVisible = !gFpsVisible;
+    overlaySetMessageVisible(gFpsSlot, gFpsVisible);
+}
+
+bool fpsOverlayIsVisible(void)
+{
+    return gFpsVisible;
+}
+
+void fpsOverlaySetPosition(int pos)
+{
+    gFpsPosition = pos;
+}
+
+int fpsOverlayGetSlot(void)
+{
+    return gFpsSlot;
 }

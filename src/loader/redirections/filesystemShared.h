@@ -37,17 +37,14 @@ extern "C" {
 #endif
 
 void ConvertPath(char *dst, const char *src, size_t size);
-DIR *sharedOpendir(const char *dirname);
 int sharedRemove(const char *path);
 int sharedMkdir(const char *path, mode_t mode);
-int sharedXstat64(int ver, const char *path, struct stat64 *stat_buf);
 int sharedOpen(const char *pathname, int flags, ...);
 int sharedOpen64(const char *pathname, int flags, ...);
 int sharedWrite(int fd, const void *buf, size_t count);
 FILE *sharedFopen(const char *pathname, const char *mode);
 FILE *sharedFopen64(const char *pathname, const char *mode);
 int sharedFclose(FILE *stream);
-int sharedOpenat(int dirfd, const char *pathname, int flags, ...);
 int sharedClose(int fd);
 char *sharedFgets(char *str, int n, FILE *stream);
 ssize_t sharedRead(int fd, void *buf, size_t count);

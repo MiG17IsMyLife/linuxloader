@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.8]
+### Added
+    - Fps overlay counter (F12 toggle). Option in config file for position and auto enabled.
+    - Primeval support for windows.
+    - HOD-ex support for windows.
+    - Insert / Remove card overlay message.
+    - Auto center controller support for shooting games. (Read Controls-Guide.md for more info).
+    - Outrun lens flare 100% fix at any resolution.
+    - Cleaned up some hooks to avoid redundancy calls.
+    - FPS limiter option moved to the Display section (make sure you change the config file accordingly).
+    - Primeval Hunt auto search for required sound libraries (Linux and Windows).
+    - Preliminary/Maybe fix for HOD4 / Virtua Fighter audio issues.
+    - Outrun support for upscaled textures and fonts.
+### Fixed
+    - Outrun network exit fix (now if stuck in the network search screen, it will exit normally).
+    - Fixed a bug in credit section when FreePlay was set for House of the Dead Games.
+
 ## [3.0.7]
 ### Added
     - Added a more detailed config file loading instructions to the Linux and Windows guides.

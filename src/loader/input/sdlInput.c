@@ -25,6 +25,7 @@
 #include "../hardware/lindbergh/touchScreen.h"
 #include "../graphics/sdlCalls.h"
 #include "../mainShared.h"
+#include "../graphics/overlayMsgs.h"
 #include "wiimoteEvdev.h"
 
 // --- GLOBAL STATE AND MAPPINGS ---
@@ -402,6 +403,24 @@ int initSdlInput(const char *controlsPath)
 
     // After loading all bindings, scan them to identify combined axes.
     detectCombinedAxes();
+
+    // Initialize centering axes to center (0.5f) and add them to dirty list so they are sent to JVS on start
+    for (int p = 0; p < MAX_ENTITIES; p++)
+    {
+        for (int i = 0; i < NUM_LOGICAL_ACTIONS; i++)
+        {
+            if (gActionProperties[p][i].isCentering)
+            {
+                gActionStates[p][i].analogValue = 0.5f;
+                JVSActionMapping *map = &gJvsMap[p][i];
+                if (map->call_type == JVS_CALL_ANALOGUE)
+                {
+                    setAnalogue(map->jvsInput, jvsAnalogueCenterValue);
+                }
+                addActionToDirtyList((JVSPlayer)p, (LogicalAction)i);
+            }
+        }
+    }
 
     // Apply any final game-specific mapping overrides.
     remapPerGame();
@@ -1289,6 +1308,25 @@ void loadGlobalConfig(const IniConfig *ini)
                         }
                     }
                 }
+
+                char *centeringSuffix = strstr(actionKeyBuffer, "_Centering");
+                if (centeringSuffix)
+                {
+                    *centeringSuffix = '\0';
+                    for (int j = 0; j < NUM_ACTION_NAMES; j++)
+                    {
+                        if (strcmp(gActionNameMap[j].name, actionKeyBuffer) == 0)
+                        {
+                            LogicalAction action = gActionNameMap[j].action;
+                            if (p_num >= 1 && p_num <= MAX_PLAYERS)
+                            {
+                                gActionProperties[p_num][action].isCentering = (atoi(value) != 0);
+                                printf("  Set P%d_%s Centering to %d\n", p_num, actionKeyBuffer, gActionProperties[p_num][action].isCentering);
+                            }
+                            break;
+                        }
+                    }
+                }
             }
             else
             {
@@ -1338,6 +1376,28 @@ void loadGlobalConfig(const IniConfig *ini)
                                 gActionProperties[p][action].isToggle = toggleVal;
                             }
                             printf("  Set %s Toggle to %d for all players (default)\n", actionKeyBuffer, toggleVal);
+                            break;
+                        }
+                    }
+                }
+
+                char *centeringPos = (char *)strstr(key, "_Centering");
+                if (centeringPos != NULL)
+                {
+                    size_t actionNameLen = centeringPos - key;
+                    strncpy(actionKeyBuffer, key, actionNameLen);
+                    actionKeyBuffer[actionNameLen] = '\0';
+                    for (int j = 0; j < NUM_ACTION_NAMES; j++)
+                    {
+                        if (strcmp(gActionNameMap[j].name, actionKeyBuffer) == 0)
+                        {
+                            LogicalAction action = gActionNameMap[j].action;
+                            bool centeringVal = (atoi(value) != 0);
+                            for (int p = 0; p < MAX_ENTITIES; p++)
+                            {
+                                gActionProperties[p][action].isCentering = centeringVal;
+                            }
+                            printf("  Set %s Centering to %d for all players (default)\n", actionKeyBuffer, centeringVal);
                             break;
                         }
                     }
@@ -2079,10 +2139,30 @@ void processChangedActions()
                 if ((gGrp == GROUP_ID4_EXP || gGrp == GROUP_ID4_JAP || gGrp == GROUP_ID5) && actionId == LA_CardInsert)
                 {
                     if (state->isActive)
+                    {
                         gTriggerInsertKey = true;
+                        overlayShowMessage("Card Inserted", 3000, OVERLAY_BOTTOM_LEFT);
+                    }
                     else
+                    {
                         gTriggerInsertKey = false;
+                        overlayShowMessage("Card Removed", 3000, OVERLAY_BOTTOM_LEFT);
+                    }
                     break;
+                }
+
+                if ((actionId == LA_Card1Insert || actionId == LA_Card2Insert || actionId == LA_CardInsert)) // && (getConfig()->emulateHW210CardReader))
+                {
+                    char msg[32];
+                    int cardNum = (actionId == LA_Card1Insert) ? 1 : 2;
+                    OverlayPosition pos = (actionId == LA_Card1Insert) ? OVERLAY_BOTTOM_LEFT : OVERLAY_BOTTOM_RIGHT;
+
+                    if (state->isActive)
+                        snprintf(msg, sizeof(msg), "Card %d Inserted", cardNum);
+                    else
+                        snprintf(msg, sizeof(msg), "Card %d Removed", cardNum);
+
+                    overlayShowMessage(msg, 3000, pos);
                 }
                 setSwitch(player, map->jvsInput, state->isActive);
                 break;
@@ -2114,8 +2194,8 @@ void processChangedActions()
 
                 if (p1CrossHairInitialized && (map->jvsInput == ANALOGUE_1 || map->jvsInput == ANALOGUE_2))
                 {
-                    static float lastAnalogue1 = 0.0f;
-                    static float lastAnalogue2 = 0.0f;
+                    static float lastAnalogue1 = 0.5f;
+                    static float lastAnalogue2 = 0.5f;
                     if (map->jvsInput == ANALOGUE_1)
                         lastAnalogue1 = state->analogValue;
                     else
@@ -2129,8 +2209,8 @@ void processChangedActions()
 
                 if (p2CrossHairInitialized && (map->jvsInput == ANALOGUE_3 || map->jvsInput == ANALOGUE_4))
                 {
-                    static float lastAnalogue3 = 0.0f;
-                    static float lastAnalogue4 = 0.0f;
+                    static float lastAnalogue3 = 0.5f;
+                    static float lastAnalogue4 = 0.5f;
                     if (map->jvsInput == ANALOGUE_3)
                         lastAnalogue3 = state->analogValue;
                     else

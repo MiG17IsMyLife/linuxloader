@@ -1,3 +1,4 @@
+#include "glad/gl.h"
 #define GL_GLEXT_PROTOTYPES
 #ifndef __i386__
 #define __i386__
@@ -17,6 +18,7 @@
 #include "../config/config.h"
 #include "crossHair.h"
 #include "fpsLimiter.h"
+#include "overlayMsgs.h"
 #include "../graphics/sdlCalls.h"
 #include "../hardware/lindbergh/touchScreen.h"
 
@@ -37,6 +39,8 @@ static bool g_redisplayNeeded = true;
 
 extern int drawableW;
 extern int drawableH;
+extern int blitWidth;
+extern int gameIsOutrunChihiroMode;
 extern SDL_Renderer *fontRenderer;
 extern TTF_Font *font;
 
@@ -86,7 +90,7 @@ void bridgeGlutSwapBuffers(void)
     if (gGrp == GROUP_OUTRUN || gGrp == GROUP_OUTRUN_TEST)
         pollEvents();
 
-    if ((p1CrossHairInitialized || p2CrossHairInitialized) && gId != GHOST_SQUAD_EVOLUTION_SBNJ)
+    if ((p1CrossHairInitialized || p2CrossHairInitialized) || (gId == GHOST_SQUAD_EVOLUTION_SBNJ && config->borderEnabled))
         renderCrosshairs();
 
     blitStretch();
@@ -94,14 +98,19 @@ void bridgeGlutSwapBuffers(void)
     if (config->borderEnabled && gId != GHOST_SQUAD_EVOLUTION_SBNJ)
         drawGameBorder(drawableW, drawableH, config->whiteBorderPercentage, config->blackBorderPercentage);
 
+    overlayInit();
+    overlayRender();
+
     SDL_GL_SwapWindow(g_SdlWindow);
 
     if (config->fpsLimiter)
         frameTiming();
 
+    double fps_val = calculateFps();
     static char windowTitle[256] = {0};
-    sprintf(windowTitle, "%s - FPS: %.2f", getGameName(), calculateFps());
+    sprintf(windowTitle, "%s - FPS: %.2f", getGameName(), fps_val);
     SDL_SetWindowTitle(g_SdlWindow, windowTitle);
+    fpsOverlayUpdateFps(fps_val);
 
     if (gId == MJ4_SBPN_REVG || gId == MJ4_EVO_SBTA)
         mj4TouchHolding();

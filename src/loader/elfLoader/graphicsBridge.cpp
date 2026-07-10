@@ -45,7 +45,6 @@ namespace GraphicsBridge
         MAP("glutMainLoopEvent", bridgeGlutMainLoopEvent);
         MAP("glutJoystickFunc", bridgeGlutJoystickFunc);
         MAP("glutPostRedisplay", bridgeGlutPostRedisplay);
-        MAP("glutSwapBuffers", bridgeGlutSwapBuffers);
         MAP("glutGet", bridgeGlutGet);
         MAP("glutSetCursor", bridgeGlutSetCursor);
         MAP("glutGameModeString", bridgeGlutGameModeString);

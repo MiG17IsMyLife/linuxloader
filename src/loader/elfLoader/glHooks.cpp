@@ -31,12 +31,6 @@ extern "C" void __attribute__((cdecl)) wrap_glColor4f(GLfloat r, GLfloat g, GLfl
         glad_glColor4f(r, g, b, a);
 }
 
-extern "C" void __attribute__((cdecl)) wrap_glEnable(GLenum cap)
-{
-    if (glad_glEnable)
-        glad_glEnable(cap);
-}
-
 extern "C" void __attribute__((cdecl)) wrap_glDisable(GLenum cap)
 {
     if (glad_glDisable)
@@ -833,13 +827,6 @@ extern "C" void __attribute__((cdecl)) wrap_glPixelTransferi(GLenum pname, GLint
 {
     if (glad_glPixelTransferi)
         glad_glPixelTransferi(pname, param);
-}
-
-extern "C" void __attribute__((cdecl)) wrap_glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type,
-                                                         GLvoid *pixels)
-{
-    if (glad_glReadPixels)
-        glad_glReadPixels(x, y, width, height, format, type, pixels);
 }
 
 extern "C" void __attribute__((cdecl)) wrap_glShaderSource(GLuint shader, GLsizei count, const GLchar *const *string, const GLint *length)
@@ -1985,7 +1972,6 @@ extern "C" void __attribute__((cdecl)) wrap_glMultMatrixd(const GLdouble *m)
         glad_glMultMatrixd(m);
 }
 
-
 extern "C" void __attribute__((cdecl)) wrap_glGenerateMipmapEXT(GLenum target)
 {
     if (glad_glGenerateMipmapEXT)
@@ -2007,8 +1993,6 @@ void *GLHooks_GetProcAddress(const char *procName)
         return (void *)&bridgeglEnable;
     if (strcmp(procName, "glDisable") == 0)
         return (void *)&bridgeglDisable;
-    if (strcmp(procName, "glDrawArrays") == 0)
-        return (void *)&bridgeglDrawArrays;
     if (strcmp(procName, "glGenFencesNV") == 0)
         return (void *)&bridgeglGenFencesNV;
     if (strcmp(procName, "glDeleteFencesNV") == 0)
@@ -2024,6 +2008,8 @@ void *GLHooks_GetProcAddress(const char *procName)
     if (strcmp(procName, "glBindTexture") == 0)
         return (void *)&bridgeglBindTexture;
 
+    if (strcmp(procName, "glDrawArrays") == 0)
+        return (void *)&wrap_glDrawArrays;
     if (strcmp(procName, "glTexSubImage2D") == 0)
         return (void *)&wrap_glTexSubImage2D;
     if (strcmp(procName, "glCompressedTexSubImage2DARB") == 0)
@@ -2196,8 +2182,6 @@ void *GLHooks_GetProcAddress(const char *procName)
         return (void *)&wrap_glDepthRange;
     if (strcmp(procName, "glDetachObjectARB") == 0)
         return (void *)&wrap_glDetachObjectARB;
-    if (strcmp(procName, "glDisable") == 0)
-        return (void *)&wrap_glDisable;
     if (strcmp(procName, "glDisableClientState") == 0)
         return (void *)&wrap_glDisableClientState;
     if (strcmp(procName, "glDisableVertexAttribArray") == 0)
@@ -2216,8 +2200,6 @@ void *GLHooks_GetProcAddress(const char *procName)
         return (void *)&wrap_glDrawElements;
     if (strcmp(procName, "glDrawRangeElements") == 0)
         return (void *)&wrap_glDrawRangeElements;
-    if (strcmp(procName, "glEnable") == 0)
-        return (void *)&wrap_glEnable;
     if (strcmp(procName, "glEnableClientState") == 0)
         return (void *)&wrap_glEnableClientState;
     if (strcmp(procName, "glEnableVertexAttribArray") == 0)
@@ -2480,8 +2462,6 @@ void *GLHooks_GetProcAddress(const char *procName)
         return (void *)&wrap_glRasterPos3f;
     if (strcmp(procName, "glReadBuffer") == 0)
         return (void *)&wrap_glReadBuffer;
-    if (strcmp(procName, "glReadPixels") == 0)
-        return (void *)&wrap_glReadPixels;
     if (strcmp(procName, "glRectf") == 0)
         return (void *)&wrap_glRectf;
     if (strcmp(procName, "glRecti") == 0)

@@ -17,6 +17,9 @@ extern std::string g_absoluteElfPath;
 
 static char g_dlErrorBuf[256];
 
+static_assert(sizeof(linux_stat_ver3) == 88, "Linux stat ver3 size mismatch");
+static_assert(sizeof(linux_stat64_safe) == 96, "Linux stat64 size mismatch");
+
 namespace FileSystemBridge
 {
 
@@ -40,12 +43,13 @@ namespace FileSystemBridge
         MAP("fputs", bridgeFputs);
         MAP("fputc", bridgeFputc);
         MAP("getc", bridgeGetc);
+        MAP("_IO_getc", bridgeGetc);
         MAP("ungetc", bridgeUngetc);
 
         MAP("flock", LibcBridge::bridgeStubSuccess);
 
         // LFS (Large File Support) functions
-        MAP("fopen64", sharedFopen);
+        MAP("fopen64", sharedFopen64);
         MAP("fseeko64", sharedFseek);
         MAP("lseek64", _lseeki64);
         MAP("ftello64", sharedFtell);
@@ -75,7 +79,6 @@ namespace FileSystemBridge
         MAP("access", bridgeAccess);
         MAP("chmod", bridgeChmod);
         MAP("chdir", bridgeChdir);
-
 
         MAP("ioctl", sharedIoctl);
         MAP("select", sharedSelect);
@@ -162,8 +165,8 @@ namespace FileSystemBridge
         log_error("readlink not implemented for %s", path);
         return -1;
     }
-    
-    FILE* bridgeFdopen(int fd, const char* mode)
+
+    FILE *bridgeFdopen(int fd, const char *mode)
     {
         log_trace("Intercepted fdopen");
         return fdopen(fd, mode);
@@ -179,14 +182,18 @@ namespace FileSystemBridge
     {
         log_trace("Intercepted writev");
         size_t total_written = 0;
-        for (int i = 0; i < iovcnt; ++i) {
+        for (int i = 0; i < iovcnt; ++i)
+        {
             int written = _write(fd, iov[i].iov_base, iov[i].iov_len);
-            if (written < 0) {
-                if (total_written == 0) return -1;
+            if (written < 0)
+            {
+                if (total_written == 0)
+                    return -1;
                 break;
             }
             total_written += written;
-            if ((size_t)written < iov[i].iov_len) break;
+            if ((size_t)written < iov[i].iov_len)
+                break;
         }
         return total_written;
     }
@@ -195,15 +202,20 @@ namespace FileSystemBridge
     {
         log_trace("Intercepted readv");
         ssize_t total_read = 0;
-        for (int i = 0; i < iovcnt; ++i) {
+        for (int i = 0; i < iovcnt; ++i)
+        {
             int bytes_read = _read(fd, iov[i].iov_base, iov[i].iov_len);
-            if (bytes_read < 0) {
-                if (total_read == 0) return -1;
+            if (bytes_read < 0)
+            {
+                if (total_read == 0)
+                    return -1;
                 break;
             }
             total_read += bytes_read;
-            if ((size_t)bytes_read < iov[i].iov_len) break;
-            if (bytes_read == 0) break; // EOF
+            if ((size_t)bytes_read < iov[i].iov_len)
+                break;
+            if (bytes_read == 0)
+                break; // EOF
         }
         return total_read;
     }
@@ -445,19 +457,33 @@ extern "C"
         struct linux_stat64_safe dst;
         memset(&dst, 0, sizeof(dst));
 
-        dst.st_dev = (unsigned long long)src.st_dev;
-        dst.__st_ino = (uint32_t)src.st_ino;
-        dst.st_ino = (unsigned long long)src.st_ino;
-        dst.st_nlink = src.st_nlink;
-        dst.st_uid = src.st_uid;
-        dst.st_gid = src.st_gid;
-        dst.st_rdev = (unsigned long long)src.st_rdev;
-        dst.st_size = src.st_size;
+        dst.st_dev = (unsigned long)(src.st_dev & 0xFFFFFFFF);
+        dst.st_dev_high = (unsigned long)((src.st_dev >> 32) & 0xFFFFFFFF);
+
+        dst.st_nlink = (unsigned long)src.st_nlink;
+        dst.st_uid = (unsigned long)src.st_uid;
+        dst.st_gid = (unsigned long)src.st_gid;
+
+        dst.st_rdev = (unsigned long)(src.st_rdev & 0xFFFFFFFF);
+        dst.st_rdev_high = (unsigned long)((src.st_rdev >> 32) & 0xFFFFFFFF);
+
+        dst.st_size = (long)(src.st_size & 0xFFFFFFFF);
+        dst.st_size_high = (long)((src.st_size >> 32) & 0xFFFFFFFF);
+
         dst.st_blksize = 4096;
-        dst.st_blocks = (src.st_size + 511) / 512;
-        dst.st_atime = (unsigned long)src.st_atime;
-        dst.st_mtime = (unsigned long)src.st_mtime;
-        dst.st_ctime = (unsigned long)src.st_ctime;
+
+        unsigned long long blocks = (src.st_size + 511) / 512;
+        dst.st_blocks = (unsigned long)(blocks & 0xFFFFFFFF);
+        dst.st_blocks_high = (unsigned long)((blocks >> 32) & 0xFFFFFFFF);
+
+        dst.st_atim.tv_sec = (int32_t)src.st_atime;
+        dst.st_atim.tv_nsec = 0;
+        dst.st_mtim.tv_sec = (int32_t)src.st_mtime;
+        dst.st_mtim.tv_nsec = 0;
+        dst.st_ctim.tv_sec = (int32_t)src.st_ctime;
+        dst.st_ctim.tv_nsec = 0;
+
+        dst.st_ino = (unsigned long)(src.st_ino & 0xFFFFFFFF);
 
         dst.st_mode = 0;
         if (src.st_mode & _S_IFDIR)
@@ -588,14 +614,7 @@ extern "C"
         if (_fstat64(fd, &win_stat) != 0)
             return -1;
 
-        if (ver == 3)
-        {
-            CopyStatVer3(win_stat, buf);
-        }
-        else
-        {
-            CopyStat64(win_stat, buf);
-        }
+        CopyStat64(win_stat, buf);
         return 0;
     }
 

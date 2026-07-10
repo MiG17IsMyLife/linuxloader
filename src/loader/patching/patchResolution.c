@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #include "../config/config.h"
@@ -59,6 +60,52 @@ float angleABC;
 float newVT3, newVT3HW, newVT3HH;
 uint32_t *intnewVT3PTr, *intnewVT3HWPTr, *intnewVT3HHPTr;
 
+// Outrun Lens flare fix globals
+float lensFlareNegHalfWBound;
+float lensFlareHalfWBound;
+float lensFlareNegHalfHBound;
+float lensFlareHalfHBound;
+float lensFlareNegDeadZone;
+float lensFlareDeadZone;
+float lensFlareHorizFadeMargin;
+float lensFlareVertFadeMargin;
+float lensFlareOccDiv;
+
+typedef struct
+{
+    int oriSize;
+    float scale;
+    int glyphMultiplier;
+} Or2FontScaling;
+
+Or2FontScaling or2FontScaling[] = {
+    {256, 0.0, 1},  {256, 0.0, 1}, {256, 0.0, 1}, {512, 0.0, 1}, {512, 0.0, 1}, {512, 0.0, 1}, {256, 0.0, 1},
+    {1024, 0.0, 1}, {256, 0.0, 1}, {128, 0.0, 1}, {256, 0.0, 1}, {256, 0.0, 1}, {512, 0.0, 1}, {512, 0.0, 1},
+};
+
+extern bool sprFontXstLoaded;
+
+// Font Scaling
+static void (*sprSetPrintFontOri)(int);
+static void (*sprSetFontScaleOri)(float, float);
+static void (*sprSetMoveCursorSizeOri)(int);
+static void (*AdvOthersLogo_DispOri)(void);
+static int fontSelected = 0;
+
+// ani files
+static void *trampolineSprani = NULL;
+static void **aniset = (void **)0x0836EF00;
+static uint32_t gEbxSprani;
+
+// xst files ----
+static uintptr_t readXstsetSubOri = 0;
+static uint32_t gEbxXst;
+
+// xmt texture files (obj_* / cs_*) ----
+static void *trampolineXmtTexture = NULL;
+static uint32_t gEsiXmt;
+
+// ID4 / ID5
 void *idDisplayTextureCAVEAddress;
 void *idDrawBallonCAVEAddress;
 void *id4NewCaptionYCAVEAddress;
@@ -72,6 +119,8 @@ float isShiftY = 0.0;
 
 static void (*idDisplayTextureOri)(void *, void *, int, int, int);
 static void (*idDrawBallonOri)(void *, void *, float, float, float, float, float, bool) = NULL;
+
+static void (*abcDrawSpriteOri)(void *);
 
 float newHeightLGJ, newWidth2LGJ, newWidthHLGJ, newWidthSLGJ;
 
@@ -307,13 +356,18 @@ void bridgeglViewport(GLint x, GLint y, GLsizei width, GLsizei height)
 #ifdef _WIN32
     else if (gGrp == GROUP_ABC)
     {
-        if(bridgeGlxGetCurrentDrawable() > 1)
+        if (bridgeGlxGetCurrentDrawable() > 1)
         {
             glad_glCullFace(GL_FRONT);
         }
+        if (width > gWidth || height > gHeight)
+        {
+            void *addr = __builtin_return_address(0);
+            width = gWidth;
+            height = gHeight;
+        }
     }
 #endif
-    
     return glad_glViewport(x, y, width, height);
 }
 
@@ -321,18 +375,19 @@ void bridgeglViewport(GLint x, GLint y, GLsizei width, GLsizei height)
 #undef glTexImage2D
 void glTexImage2D(unsigned int target, int level, int internalformat, int width, int height, int border, unsigned int format,
                   unsigned int type, const void *pixels)
-{
 #else
 void bridgeglTexImage2D(unsigned int target, int level, int internalformat, int width, int height, int border, unsigned int format,
                         unsigned int type, const void *pixels)
-{
 #endif
+{
     if (gGrp == GROUP_OUTRUN)
     {
         if (gWidth != 800 || gHeight != 480)
         {
             void *addr = __builtin_return_address(0);
-            if ((width >= 800) && (width != 1024) && (addr != (void *)0x80d78d5) && (addr != (void *)0x080d7941))
+            if ((width >= 800) && (width != 1024) && (addr != (void *)0x80d78d5) && (addr != (void *)0x080d7941) &&
+                (addr != (void *)0x08101a99) && (addr != (void *)0x08101b71) && (addr != (void *)0x08101c4d) &&
+                (addr != (void *)0x08101d2a) && (addr != (void *)0x08101e07))
             {
                 width = gWidth;
                 height = gHeight;
@@ -354,11 +409,10 @@ void bridgeglTexImage2D(unsigned int target, int level, int internalformat, int 
 #ifdef __linux__
 #undef glTexParameteri
 void glTexParameteri(GLenum target, GLenum pname, GLint param)
-{
 #else
 void bridgeglTexParameteri(GLenum target, GLenum pname, GLint param)
-{
 #endif
+{
     if (!glad_glTexParameteri)
         return;
 
@@ -1008,10 +1062,10 @@ void vf5WidthFix(void *param1)
     (((void (*)(void *))0x080d4c24)(param1));
 }
 
-__attribute__((naked)) void abcDrawSpriteFixCAVE(void *p1)
-{
-    __asm__ volatile("push %%ebp\n\tmov $0x3, %%ecx\n\tjmp *%0\n\t" ::"m"(abcDrawSpriteCAVEAddress));
-}
+// __attribute__((naked)) void abcDrawSpriteFixCAVE(void *p1)
+// {
+//     __asm__ volatile("push %%ebp\n\tmov $0x3, %%ecx\n\tjmp *%0\n\t" ::"m"(abcDrawSpriteCAVEAddress));
+// }
 
 void abcDrawSprite(void *p1)
 {
@@ -1019,7 +1073,9 @@ void abcDrawSprite(void *p1)
     textureIDABC = x->id;
     Matrix4f mat = x->mat;
     angleABC = atan2(mat.m00, mat.m10) * (180.0 / M_PI);
-    abcDrawSpriteFixCAVE(p1);
+    // abcDrawSpriteFixCAVE(p1);
+    // __debugbreak();
+    abcDrawSpriteOri(p1);
 }
 
 void idDisplayTexture(void *p1, void *p2, int p3, int p4, int p5)
@@ -1644,6 +1700,198 @@ void glVertex3fHarley(GLfloat x, GLfloat y, GLfloat z)
     glad_glVertex3f(x, y, z);
 }
 
+void outrunLensFlareFix()
+{
+    float scaleX = (float)gWidth / 800.0f;
+    float scaleY = (float)gHeight / 480.0f;
+    float areaRatio = ((float)gWidth * (float)gHeight) / 384000.0f; // 800*480
+
+    // Screen bounds (scale linearly with resolution)
+    lensFlareHalfWBound = 550.0f * scaleX;
+    lensFlareHalfHBound = 440.0f * scaleY;
+    lensFlareNegHalfWBound = -lensFlareHalfWBound;
+    lensFlareNegHalfHBound = -lensFlareHalfHBound;
+
+    // Dead zone (scale proportionally with horizontal resolution)
+    lensFlareDeadZone = 100.0f * scaleX;
+    lensFlareNegDeadZone = -lensFlareDeadZone;
+
+    // Fade margins = screen bound - dead zone
+    lensFlareHorizFadeMargin = lensFlareHalfWBound - lensFlareDeadZone;
+    lensFlareVertFadeMargin = lensFlareHalfHBound - lensFlareDeadZone;
+
+    // Occlusion divisor scales with total pixel count
+    lensFlareOccDiv = 12000.0f * areaRatio;
+
+    int idx = 0x00;
+    if (gId == OUTRUN_2_SP_SDX_SBMB)
+        idx = 0x6c;
+
+    // Patch all 9 instruction displacements to point to our scaled variables
+    setVariable(0x080e8d5d + idx, (size_t)&lensFlareNegHalfWBound); // -550.0 bound
+    setVariable(0x080e8d71 + idx, (size_t)&lensFlareHalfWBound);    // +550.0 bound
+    setVariable(0x080e8e9f + idx, *(uint32_t *)&lensFlareHalfWBound);
+    setVariable(0x080e8d7d + idx, (size_t)&lensFlareNegHalfHBound);   // -440.0 bound
+    setVariable(0x080e8d87 + idx, (size_t)&lensFlareHalfHBound);      // +440.0 bound
+    setVariable(0x080e8ecd + idx, (size_t)&lensFlareHalfHBound);      // +440.0 bound 2
+    setVariable(0x080e8e59 + idx, (size_t)&lensFlareNegDeadZone);     // -100.0 dead zone
+    setVariable(0x080e8fae + idx, (size_t)&lensFlareOccDiv);          // 12000.0 occlusion divisor
+    setVariable(0x080ea13a + idx, (size_t)&lensFlareVertFadeMargin);  // 340.0 fade margin V
+    setVariable(0x080ea120 + idx, (size_t)&lensFlareDeadZone);        // +100.0 dead zone
+    setVariable(0x080ea156 + idx, (size_t)&lensFlareDeadZone);        // +100.0 dead zone
+    setVariable(0x080ea17a + idx, (size_t)&lensFlareHorizFadeMargin); // 450.0 fade margin H
+}
+
+void sprSetPrintFont(int a)
+{
+    float scale = 1.0 * or2FontScaling[a].scale;
+    setVariable(0x080cdf9e, *(uint32_t *)&scale);
+    fontSelected = a;
+    sprSetPrintFontOri(a);
+    scale = 1.0;
+    setVariable(0x080cdf9e, *(uint32_t *)&scale);
+}
+
+void sprSetFontScale(float a, float b)
+{
+    a *= or2FontScaling[fontSelected].scale;
+    b *= or2FontScaling[fontSelected].scale;
+    sprSetFontScaleOri(a, b);
+}
+
+void sprSetMoveCursorSize(int a)
+{
+    a *= or2FontScaling[fontSelected].glyphMultiplier;
+    sprSetMoveCursorSizeOri(a);
+}
+
+void AdvOthersLogo_Disp()
+{
+    AdvOthersLogo_DispOri();
+}
+
+void decryptOr2Buffer(void *buf)
+{
+    if (buf && memcmp(buf, "\x4c\x4c\x41\x00", 4) == 0)
+    {
+        uint32_t size;
+        memcpy(&size, (uint8_t *)buf + 4, sizeof(uint32_t));
+        uint8_t *data = (uint8_t *)buf + 8;
+        const uint8_t key[] = {0x8B, 0x3C, 0xD7, 0xE1, 0x9F, 0x42, 0xAA, 0x55};
+        size_t key_len = sizeof(key);
+        for (uint32_t i = 0; i < size; i++)
+        {
+            data[i] ^= key[i % key_len];
+        }
+        memmove(buf, data, size);
+    }
+}
+
+__attribute__((used)) static void checkMagicSprani(void)
+{
+    uint32_t ebx = gEbxSprani;
+    void *buf = aniset[ebx];
+    decryptOr2Buffer(buf);
+}
+
+static uint32_t read32le(const uint8_t *p)
+{
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+__attribute__((used)) static void checkMagicXst(void)
+{
+    void *buf = *(void **)(gEbxXst + 4);
+    decryptOr2Buffer(buf);
+    if (sprFontXstLoaded)
+    {
+        uint8_t *xpr0 = buf + 0x28;
+
+        size_t pos = 0x0C;
+
+        for (int i = 0; i < 14; i++)
+        {
+            uint32_t gpuReg = read32le(xpr0 + pos + 12);
+            int lw = (gpuReg >> 20) & 0xF;
+            int w = lw ? (1 << lw) : 256;
+
+            or2FontScaling[i].scale = (float)or2FontScaling[i].oriSize / (float)w;
+            or2FontScaling[i].glyphMultiplier = w / or2FontScaling[i].oriSize;
+
+            // Patch Glyph sizes
+            uint16_t fontW, fontH;
+            memcpy(&fontW, (void *)0x081de4a8 + i * 0x10, sizeof(uint16_t));
+            memcpy(&fontH, (void *)0x081de4aa + i * 0x10, sizeof(uint16_t));
+            fontW = fontW * or2FontScaling[i].glyphMultiplier;
+            fontH = fontH * or2FontScaling[i].glyphMultiplier;
+            setVariable16(0x081de4a8 + i * 0x10, fontW);
+            setVariable16(0x081de4aa + i * 0x10, fontH);
+
+            pos += 0x14;
+        }
+        sprFontXstLoaded = false;
+    }
+}
+
+__attribute__((naked)) static void replacementSprani(void)
+{
+    __asm__("pusha\n"
+            "movl 16(%%esp), %%eax\n"
+            "movl %%eax, %0\n"
+#ifdef _WIN32
+            "call _checkMagicSprani\n"
+#else
+            "call checkMagicSprani\n"
+#endif
+            "popa\n"
+            "jmp *%1\n"
+            : "=m"(gEbxSprani)
+            : "m"(trampolineSprani)
+            : "eax");
+}
+
+__attribute__((naked)) static void myReadXstsetSub(void)
+{
+    __asm__("pusha\n"
+            "movl 16(%%esp), %%eax\n"
+            "movl %%eax, %0\n"
+#ifdef _WIN32
+            "call _checkMagicXst\n"
+#else
+            "call checkMagicXst\n"
+#endif
+            "popa\n"
+            "jmp *%1\n"
+            : "=m"(gEbxXst)
+            : "m"(readXstsetSubOri)
+            : "eax");
+}
+
+__attribute__((used)) static void checkMagicXmtTexture(void)
+{
+    uint32_t esi = gEsiXmt;
+    uint32_t hdr = *(uint32_t *)esi;
+    void *buf = *(void **)((uint8_t *)(uintptr_t)hdr + 0x10);
+    decryptOr2Buffer(buf);
+}
+
+__attribute__((naked)) static void replacementXmtTexture(void)
+{
+    __asm__("pusha\n"
+            "movl %%esi, %0\n"
+#ifdef _WIN32
+            "call _checkMagicXmtTexture\n"
+#else
+            "call checkMagicXmtTexture\n"
+#endif
+            "popa\n"
+            "movl $6, 0x14(%%esi)\n" // original: state = 6 (LoadTextures)
+            "jmp *%1\n"
+            : "=m"(gEsiXmt)
+            : "m"(trampolineXmtTexture)
+            : "esi");
+}
+
 int initResolutionPatches()
 {
     int numDisplays;
@@ -1659,8 +1907,10 @@ int initResolutionPatches()
             float newFontScale = gHeight / 480.0;
             unsigned int *newFontScalePtr = (unsigned int *)&newFontScale;
             setVariable(0x0806cd72, *newFontScalePtr);
-            abcDrawSpriteCAVEAddress = (void *)0x08076a28 + 6;
-            detourFunction(0x08076a28, abcDrawSprite);
+            // abcDrawSpriteCAVEAddress = (void *)0x08076a28 + 6;
+            // detourFunction(0x08076a28, abcDrawSprite);
+
+            abcDrawSpriteOri = (void (*)(void *))trampolineHook((void *)0x08076a28, abcDrawSprite, 6);
 
             patchABCMarkers(0x080b066a, 0x0809d3dc, 0x080b1668);
             hookABCGLFunctions(0x08076db8, 0x08076dd2, 0x08076b78);
@@ -1675,8 +1925,10 @@ int initResolutionPatches()
             float newFontScale = gHeight / 480.0;
             unsigned int *newFontScalePtr = (unsigned int *)&newFontScale;
             setVariable(0x0806cd6a, *newFontScalePtr);
-            abcDrawSpriteCAVEAddress = (void *)0x08076a20 + 6;
-            detourFunction(0x08076a20, abcDrawSprite);
+            // abcDrawSpriteCAVEAddress = (void *)0x08076a20 + 6;
+            // detourFunction(0x08076a20, abcDrawSprite);
+
+            abcDrawSpriteOri = (void (*)(void *))trampolineHook((void *)0x08076a20, abcDrawSprite, 6);
 
             patchABCMarkers(0x080b06be, 0x0809d430, 0x080b16bc);
             hookABCGLFunctions(0x08076db0, 0x08076dca, 0x08076b70);
@@ -1691,8 +1943,10 @@ int initResolutionPatches()
             float newFontScale = gHeight / 480.0;
             unsigned int *newFontScalePtr = (unsigned int *)&newFontScale;
             setVariable(0x0806cd72, *newFontScalePtr);
-            abcDrawSpriteCAVEAddress = (void *)0x08076a28 + 6;
-            detourFunction(0x08076a28, abcDrawSprite);
+            // abcDrawSpriteCAVEAddress = (void *)0x08076a28 + 6;
+            // detourFunction(0x08076a28, abcDrawSprite);
+
+            abcDrawSpriteOri = (void (*)(void *))trampolineHook((void *)0x08076a28, abcDrawSprite, 6);
 
             patchABCMarkers(0x080b06c6, 0x0809d438, 0x080b16c4);
             hookABCGLFunctions(0x08076db8, 0x08076dd2, 0x08076b78);
@@ -1707,8 +1961,10 @@ int initResolutionPatches()
             float newFontScale = gHeight / 480.0;
             unsigned int *newFontScalePtr = (unsigned int *)&newFontScale;
             setVariable(0x0806ce2e, *newFontScalePtr);
-            abcDrawSpriteCAVEAddress = (void *)0x08076ae4 + 6;
-            detourFunction(0x08076ae4, abcDrawSprite);
+            // abcDrawSpriteCAVEAddress = (void *)0x08076ae4 + 6;
+            // detourFunction(0x08076ae4, abcDrawSprite);
+
+            abcDrawSpriteOri = (void (*)(void *))trampolineHook((void *)0x08076ae4, abcDrawSprite, 6);
 
             patchABCMarkers(0x080b0a22, 0x0809d6cc, 0x080b1a20);
             hookABCGLFunctions(0x08076e74, 0x08076e8e, 0x08076c34);
@@ -1723,8 +1979,10 @@ int initResolutionPatches()
             float newFontScale = gHeight / 480.0;
             unsigned int *newFontScalePtr = (unsigned int *)&newFontScale;
             setVariable(0x0806ce36, *newFontScalePtr);
-            abcDrawSpriteCAVEAddress = (void *)0x08076aec + 6;
-            detourFunction(0x08076aec, abcDrawSprite);
+            // abcDrawSpriteCAVEAddress = (void *)0x08076aec + 6;
+            // detourFunction(0x08076aec, abcDrawSprite);
+
+            abcDrawSpriteOri = (void (*)(void *))trampolineHook((void *)0x08076aec, abcDrawSprite, 6);
 
             patchABCMarkers(0x080b0a2a, 0x0809d6d4, 0x080b1a28);
             hookABCGLFunctions(0x08076e7c, 0x08076e96, 0x08076c3c);
@@ -1739,8 +1997,10 @@ int initResolutionPatches()
             float newFontScale = gHeight / 480.0;
             unsigned int *newFontScalePtr = (unsigned int *)&newFontScale;
             setVariable(0x0806cd6a, *newFontScalePtr);
-            abcDrawSpriteCAVEAddress = (void *)0x08076a20 + 6;
-            detourFunction(0x08076a20, abcDrawSprite);
+            // abcDrawSpriteCAVEAddress = (void *)0x08076a20 + 6;
+            // detourFunction(0x08076a20, abcDrawSprite);
+
+            abcDrawSpriteOri = (void (*)(void *))trampolineHook((void *)0x08076a20, abcDrawSprite, 6);
 
             patchABCMarkers(0x080b06be, 0x0809d430, 0x080b16bc);
             hookABCGLFunctions(0x08076db0, 0x08076dca, 0x08076b70);
@@ -1755,8 +2015,10 @@ int initResolutionPatches()
             float newFontScale = gHeight / 480.0;
             unsigned int *newFontScalePtr = (unsigned int *)&newFontScale;
             setVariable(0x0806cd72, *newFontScalePtr);
-            abcDrawSpriteCAVEAddress = (void *)0x08076a28 + 6;
-            detourFunction(0x08076a28, abcDrawSprite);
+            // abcDrawSpriteCAVEAddress = (void *)0x08076a28 + 6;
+            // detourFunction(0x08076a28, abcDrawSprite);
+
+            abcDrawSpriteOri = (void (*)(void *))trampolineHook((void *)0x08076a28, abcDrawSprite, 6);
 
             patchABCMarkers(0x080b06c6, 0x0809d438, 0x080b16c4);
             hookABCGLFunctions(0x08076db8, 0x08076dd2, 0x08076b78);
@@ -2749,26 +3011,42 @@ int initResolutionPatches()
         {
             if (gWidth <= 800 && gHeight <= 480)
                 break;
-            // If resolution is not the native of the game this patch kind of fix the Sun when the LensGlare effect is
-            // shown.
-            if ((gWidth > 800) && (gHeight > 480))
-            {
-                patchMemoryFromString(0x080e8e72, "9090909090"); // removes a call to a light function
-                patchMemoryFromString(0x080e8e83, "9090909090"); // removes a call to a light function
-                if (!getConfig()->outrunLensGlareEnabled)
-                {
-                    detourFunction(0x080e8b34, stubReturn); // Completely disables the lens glare effect
-                }
-            }
+
             setVariable(0x080b913a, 0x44200000);
             setVariable(0x081dae28, 0x44200000);
             setVariable(0x081dae30, 0x44200000);
+
+            outrunLensFlareFix();
+
+            // Pool	File Offset	Current Size	Size (KB)	Purpose
+            // 0	0x081E27E8	0x00800000	8,192 KB	General
+            // 1	0x081e2808	0x01800000	24,576 KB	File data
+            // 2	0x081E2828	0x00400000	4,096 KB	Swizzle buffers
+            // 3	0x081E2848	0x01800000	24,576 KB	File data
+            // 4	0x081E2868	0x01800000	24,576 KB	File data
+            // 5	0x081E2888	0x00040000	256 KB	Texture handles
+            // Patch to increase Heap Size
+            setVariable(0x081e2868, 0x02000000);
+            setVariable(0x081e2888, 0x04000000);
+            setVariable(0x081e28a8, 0x00800000);
+            setVariable(0x081e28c8, 0x04000000);
+            setVariable(0x081e28e8, 0x04000000);
+
+            // Patches to adjust font textures to ne size
+            sprSetPrintFontOri = (void (*)(int))trampolineHook(findStaticFnAddr("_Z15sprSetPrintFonti"), sprSetPrintFont, 5);
+            sprSetFontScaleOri = (void (*)(float, float))trampolineHook(findStaticFnAddr("_Z15sprSetFontScaleff"), sprSetFontScale, 5);
+            sprSetMoveCursorSizeOri = (void (*)(int))trampolineHook(findStaticFnAddr("_Z20sprSetMoveCursorSizei"), sprSetMoveCursorSize, 6);
+            AdvOthersLogo_DispOri = (void (*)(void))trampolineHook(findStaticFnAddr("_Z18AdvOthersLogo_DispPv"), AdvOthersLogo_Disp, 9);
+
+            // Hooks to decrypt patched textures
+            trampolineSprani = trampolineHook((void *)0x080CD11B, (void *)replacementSprani, 7);
+            readXstsetSubOri = 0x080ebe12;
+            replaceCallAtAddress(0x080D102F, (void *)myReadXstsetSub);
+            trampolineXmtTexture = trampolineHook((void *)0x08097033, (void *)replacementXmtTexture, 7);
         }
         break;
         case OUTRUN_2_SP_SDX_SBMB_TEST:
         {
-            if (gWidth <= 800 && gHeight <= 480)
-                break;
             setVariable(0x0804a490, gWidth);
             setVariable(0x0804a4ad, gHeight);
 
@@ -2799,19 +3077,35 @@ int initResolutionPatches()
             patchMemoryFromString(0x081e7b3e, "7e");
             patchMemoryFromString(0x081e7b46, "89");
 
-            if (gWidth <= 800 && gHeight <= 480)
-                break;
-            // If resolution is not the native of the game this patch kind of fix the Sun when the LensGlare effect is
-            // shown.
-            if ((gWidth > 800) && (gHeight > 480))
-            {
-                patchMemoryFromString(0x080e8e06, "9090909090"); // removes a call to a light function
-                patchMemoryFromString(0x080e8e17, "9090909090"); // removes a call to a light function
-                if (!getConfig()->outrunLensGlareEnabled)
-                {
-                    detourFunction(0x080e8ac8, stubReturn); // Completely disables the lens glare effect
-                }
-            }
+            outrunLensFlareFix();
+
+            // Pool	File Offset	Current Size	Size (KB)	Purpose
+            // 0	0x081E27E8	0x00800000	8,192 KB	General
+            // 1	0x081e2808	0x01800000	24,576 KB	File data
+            // 2	0x081E2828	0x00400000	4,096 KB	Swizzle buffers
+            // 3	0x081E2848	0x01800000	24,576 KB	File data
+            // 4	0x081E2868	0x01800000	24,576 KB	File data
+            // 5	0x081E2888	0x00040000	256 KB	Texture handles
+            // Patch to increase Heap Size
+            setVariable(0x081E27E8, 0x02000000);
+            setVariable(0x081e2808, 0x04000000);
+            setVariable(0x081E2828, 0x00800000);
+            setVariable(0x081E2848, 0x04000000);
+            setVariable(0x081E2868, 0x04000000);
+
+            // Patches to adjust font textures to ne size
+            sprSetPrintFontOri = (void (*)(int))trampolineHook(findStaticFnAddr("_Z15sprSetPrintFonti"), sprSetPrintFont, 5);
+            sprSetFontScaleOri = (void (*)(float, float))trampolineHook(findStaticFnAddr("_Z15sprSetFontScaleff"), sprSetFontScale, 5);
+            sprSetMoveCursorSizeOri = (void (*)(int))trampolineHook(findStaticFnAddr("_Z20sprSetMoveCursorSizei"), sprSetMoveCursorSize, 6);
+            AdvOthersLogo_DispOri = (void (*)(void))trampolineHook(findStaticFnAddr("_Z18AdvOthersLogo_DispPv"), AdvOthersLogo_Disp, 9);
+
+            // Hooks to decrypt patched textures
+            trampolineSprani = trampolineHook((void *)0x080CD11B, (void *)replacementSprani, 7);
+            readXstsetSubOri = 0x080ebda6;
+            replaceCallAtAddress(0x080D102F, (void *)myReadXstsetSub);
+            trampolineXmtTexture = trampolineHook((void *)0x08097033, (void *)replacementXmtTexture, 7);
+            // detourFunction(0x080a150e, stubReturn);
+            // patchMemoryFromString(0x080b8bda, "9090909090");
         }
         break;
         case OUTRUN_2_SP_SDX_SBMB_REVA_TEST:

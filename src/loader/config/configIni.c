@@ -37,6 +37,13 @@ int createDefaultIni(const char *filePath)
     fprintf(file, "# Set to keep the aspect ratio in games like Sega Race TV Primeval Hunt and LGJ-SP\n");
     fprintf(file, "KEEP_ASPECT_RATIO = %s\n\n", defaults.keepAspectRatio ? "true" : "false");
     fprintf(file, "# Set to true to enable the mouse pointer/Cursor\nHIDE_CURSOR = %s\n\n", defaults.hideCursor ? "true" : "false");
+    fprintf(file, "# Set to false if you don't want to limit the FPS\n");
+    fprintf(file, "FPS_LIMITER_ENABLED = %s\n\n", defaults.fpsLimiter ? "true" : "false");
+    fprintf(file, "# Set the target FPS (will only work if FPS_LIMITER_ENABLED = 1)\nFPS_TARGET = %.1f\n\n", defaults.fpsTarget);
+    fprintf(file, "# Set to true to enable the FPS overlay\n");
+    fprintf(file, "FPS_OVERLAY_ENABLED = %s\n\n", defaults.fpsOverlayEnabled ? "true" : "false");
+    fprintf(file, "# Set the position of the FPS overlay (0: TOP_LEFT, 1: TOP_RIGHT, 2: BOTTOM_LEFT, 3: BOTTOM_RIGHT)\n");
+    fprintf(file, "FPS_OVERLAY_POSITION = %d\n\n", defaults.fpsOverlayPosition);
 
     // [Input]
     fprintf(file, "[Input]\n");
@@ -86,9 +93,6 @@ int createDefaultIni(const char *filePath)
     fprintf(file, "[Graphics]\n");
     fprintf(file, "# Set to true if you experience flickering in hummer\n");
     fprintf(file, "HUMMER_FLICKER_FIX = %s\n\n", defaults.hummerFlickerFix ? "true" : "false");
-    fprintf(file, "# Set to false if you don't want to limit the FPS\n");
-    fprintf(file, "FPS_LIMITER_ENABLED = %s\n\n", defaults.fpsLimiter ? "true" : "false");
-    fprintf(file, "# Set the target FPS (will only work if FPS_LIMITER_ENABLED = 1)\nFPS_TARGET = %.1f\n\n", defaults.fpsTarget);
     fprintf(file, "# Set to true if you want to render LGJ using the mesa patches\n");
     fprintf(file, "LGJ_RENDER_WITH_MESA = %s\n\n", defaults.lgjRenderWithMesa ? "true" : "false");
     fprintf(file, "# Disable to use the original fonts instead of the built in font\n");
@@ -112,15 +116,13 @@ int createDefaultIni(const char *filePath)
 
     // [GameSpecific]
     fprintf(file, "[GameSpecific]\n");
-    fprintf(file, "# Set Primeval Hunt\n# Mode 0: Default (side by side)\n# Mode 1: No Touch screen\n# Mode 2: Side By Side\n");
+    fprintf(file, "# Set Primeval Hunt\n# Mode 0: Default (no scaling)\n# Mode 1: No Touch screen\n# Mode 2: Side By Side\n");
     fprintf(file, "# Mode 3: 3ds mode 1 (Touch screen to the right)\n# Mode 4: 3ds mode 2 (Touch screen to the bottom)\n");
     fprintf(file, "PRIMEVAL_HUNT_SCREEN_MODE = %d\n\n", defaults.phScreenMode);
     fprintf(file, "# Set Primeval Hunt Test mode screen to single screen\n");
     fprintf(file, "PRIMEVAL_HUNT_TEST_SCREEN_SINGLE = %s\n\n", defaults.phTestScreenSingle ? "true" : "false");
     fprintf(file, "# Set to true to bypass cabinet checks including drive board and tower in Outrun 2 SP SDX\n");
     fprintf(file, "SKIP_OUTRUN_CABINET_CHECK = %s\n\n", defaults.skipOutrunCabinetCheck ? "true" : "false");
-    fprintf(file, "# Set to false if you want to disable the Glare effect in OutRun\n");
-    fprintf(file, "OUTRUN_LENS_GLARE_ENABLED = %s\n\n", defaults.outrunLensGlareEnabled ? "true" : "false");
     fprintf(file, "# Hacky way to make MJ4 and AxA work at prohibited times\nMJ4_ENABLED_ALL_THE_TIME = %s\n\n",
             defaults.mj4EnabledAtT ? "true" : "false");
     fprintf(file, "# House of the dead 4 speed fix, set the frequency of your CPU in Ghz\nCPU_FREQ_GHZ = %.1f\n\n", defaults.cpuFreqGhz);

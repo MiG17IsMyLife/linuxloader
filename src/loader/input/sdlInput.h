@@ -241,6 +241,7 @@ void detectCombinedAxes();
 void getLogicalActionString(const ControlBinding *binding, char *out_str, size_t str_size, const char *name);
 bool needsPlayer(LogicalAction action, const char *name);
 int listSdlControllers(void);
+void addActionToDirtyList(JVSPlayer player, LogicalAction action);
 
 #ifdef __cplusplus
 }

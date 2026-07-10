@@ -45,6 +45,33 @@ void setVariable(size_t address, size_t value)
 #endif
 }
 
+void setVariable16(size_t address, uint16_t value)
+{
+#ifdef __linux__
+    int pagesize = sysconf(_SC_PAGE_SIZE);
+    uint16_t *variable = (uint16_t *)address;
+    void *toModify = (void *)(address - (address % pagesize));
+    int prot = mprotect(toModify, pagesize, PROT_EXEC | PROT_WRITE);
+    if (prot != 0)
+#else
+    DWORD oldProtect;
+    if (!VirtualProtect((void *)address, sizeof(uint16_t), PAGE_EXECUTE_READWRITE, &oldProtect))
+#endif
+
+    {
+        printf("setVariable16\n");
+        log_error("Error: Cannot unprotect memory region to change variable\n");
+        return;
+    }
+#ifdef __linux__
+    *variable = value;
+#else
+    uint16_t *variable = (uint16_t *)address;
+    *variable = value;
+    VirtualProtect((void *)address, sizeof(uint16_t), oldProtect, &oldProtect);
+#endif
+}
+
 void patchMemoryFromString(size_t address, char *value)
 {
     size_t size = strlen((void *)value);

@@ -22,8 +22,8 @@
 #include "../hardware/lindbergh/securityBoard.h"
 #include "../graphics/shaderCache.h"
 #include "../graphics/shaderPatches.h"
-#include "../log/log.h"
 #include "../graphics/customCursor.h"
+#include "../graphics/glutBridge.h"
 #include "flowControl.h"
 #include "patchNetwork.h"
 
@@ -469,7 +469,7 @@ int initPatch()
                 gsEvoElfShaderPatcher();
                 detourFunction(0x0804c334, gl_ProgramStringARB);
             }
-            
+
             if (config->gsevoCrosshairAlwaysOn)
             {
                 // Built-in CrossHairs Always On
@@ -701,6 +701,12 @@ int initPatch()
             // Forces FFB command output
             if (getConfig()->emulateDriveboard)
                 detourFunction(0x080cffb4, stubRetZero);
+
+#ifdef _WIN32
+            // INT 80
+            replaceCallAtAddress(0x083757b6, bridgeGettid);
+            replaceCallAtAddress(0x08375819, bridgeGettid);
+#endif
         }
         break;
         case HUMMER_EXTREME_MDX_SBTL: // DVP-0083

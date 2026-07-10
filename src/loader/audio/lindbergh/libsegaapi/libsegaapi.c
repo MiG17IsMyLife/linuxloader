@@ -8,24 +8,6 @@
 #include <stdarg.h>
 #include <pthread.h>
 
-GUID EAX_NULL_GUID;
-GUID EAX_FREQUENCYSHIFTER_EFFECT;
-GUID EAX_ECHO_EFFECT;
-GUID EAX_REVERB_EFFECT;
-GUID EAX_EQUALIZER_EFFECT;
-GUID EAX_DISTORTION_EFFECT;
-GUID EAX_AGCCOMPRESSOR_EFFECT;
-GUID EAX_PITCHSHIFTER_EFFECT;
-GUID EAX_FLANGER_EFFECT;
-GUID EAX_VOCALMORPHER_EFFECT;
-GUID EAX_AUTOWAH_EFFECT;
-GUID EAX_RINGMODULATOR_EFFECT;
-GUID EAX_CHORUS_EFFECT;
-GUID EAXPROPERTYID_EAX40_FXSlot0;
-GUID EAXPROPERTYID_EAX40_FXSlot1;
-GUID EAXPROPERTYID_EAX40_FXSlot2;
-GUID EAXPROPERTYID_EAX40_FXSlot3;
-
 #define HANDLE_CHECK(handle, returnValue)                                                                              \
     if (handle == NULL)                                                                                                \
     {                                                                                                                  \
@@ -404,7 +386,7 @@ PlaybackStatus SEGAAPI_GetPlaybackStatus(void *hHandle)
 
     if (!buffer->bDoContinuousLooping &&
         fAudioVoiceState.SamplesPlayed >=
-            bytesToSamples(buffer, buffer->size < buffer->endOffset ? buffer->size : buffer->endOffset))
+            bytesToSamples(buffer, buffer->size < buffer->endOffset ? buffer->size : buffer->endOffset)  && buffer->outputFormat.byNumChans == 2)
     {
         return PLAYBACK_STATUS_STOP;
     }
@@ -621,7 +603,7 @@ int SEGAAPI_SetPlaybackPosition(void *hHandle, unsigned int dwPlaybackPos)
     }
 
     int status = SEGAAPI_GetPlaybackStatus(hHandle);
-    char *statusString;
+    char *statusString = "UNKNOWN";
     switch (status)
     {
     case PLAYBACK_STATUS_STOP:
@@ -637,12 +619,10 @@ int SEGAAPI_SetPlaybackPosition(void *hHandle, unsigned int dwPlaybackPos)
         statusString = "PLAYBACK_STATUS_INVALID";
         break;
     default:
-        statusString = "UNKNOWN";
         break;
     }
-    // Retrofan Test
-    // if (buffer->fAudioFormat.nChannels == 1)
-    if (buffer->bDoContinuousLooping && status == PLAYBACK_STATUS_STOP && buffer->fAudioFormat.nChannels == 1)
+
+    if (buffer->fAudioFormat.nChannels == 1)
     {
         // printf("RETURNED SEGAAPI_SetPlaybackPosition(%p, %d) Looping %d Status %s\n", hHandle, dwPlaybackPos,
         //        buffer->bDoContinuousLooping, statusString);

@@ -145,7 +145,6 @@ void setDefaultValues(EmulatorConfig *cfg)
     cfg->useAltJvsPassthrough = 0;
     cfg->hummerFlickerFix = 0;
     cfg->keepAspectRatio = 1;
-    cfg->outrunLensGlareEnabled = 1;
     cfg->ramboGunsSwitch = 0;
     cfg->id5ChineseLanguage = 0;
     cfg->idSteeringPercentageReduction = 0.0f;
@@ -203,6 +202,8 @@ void setDefaultValues(EmulatorConfig *cfg)
     strcpy(cfg->p2CrossHairPath, "");
     cfg->customCrossHairWidth = 64;
     cfg->customCrossHairHeight = 64;
+    cfg->fpsOverlayEnabled = 0;
+    cfg->fpsOverlayPosition = 0;
 }
 
 static const char *getValue(const IniConfig *ini, const char *sectionName, const char *key)
@@ -319,6 +320,10 @@ void applyIniConfig(EmulatorConfig *config, const IniConfig *ini)
 	config->blackBorderPercentage = getFloat(ini, "Display", "BLACK_BORDER_PERCENTAGE", config->blackBorderPercentage * 100.0f) / 100.0f;
     config->keepAspectRatio = getInt(ini, "Display", "KEEP_ASPECT_RATIO", config->keepAspectRatio);
     config->hideCursor = getInt(ini, "Display", "HIDE_CURSOR", config->hideCursor);
+    config->fpsLimiter = getInt(ini, "Display", "FPS_LIMITER_ENABLED", config->fpsLimiter);
+    config->fpsTarget = getFloat(ini, "Display", "FPS_TARGET", config->fpsTarget);
+    config->fpsOverlayEnabled = getInt(ini, "Display", "FPS_OVERLAY_ENABLED", config->fpsOverlayEnabled);
+    config->fpsOverlayPosition = getInt(ini, "Display", "FPS_OVERLAY_POSITION", config->fpsOverlayPosition);
 
     // [Input]
     config->inputMode = getInt(ini, "Input", "INPUT_MODE", config->inputMode);
@@ -361,8 +366,6 @@ void applyIniConfig(EmulatorConfig *config, const IniConfig *ini)
 
     // [Graphics]
     config->hummerFlickerFix = getInt(ini, "Graphics", "HUMMER_FLICKER_FIX", config->hummerFlickerFix);
-    config->fpsLimiter = getInt(ini, "Graphics", "FPS_LIMITER_ENABLED", config->fpsLimiter);
-    config->fpsTarget = getFloat(ini, "Graphics", "FPS_TARGET", config->fpsTarget);
     config->lgjRenderWithMesa = getInt(ini, "Graphics", "LGJ_RENDER_WITH_MESA", config->lgjRenderWithMesa);
     config->disableBuiltinFont = getInt(ini, "Graphics", "DISABLE_BUILTIN_FONT", config->disableBuiltinFont);
     config->disableBuiltinLogos = getInt(ini, "Graphics", "DISABLE_BUILTIN_LOGOS", config->disableBuiltinLogos);
@@ -386,7 +389,6 @@ void applyIniConfig(EmulatorConfig *config, const IniConfig *ini)
     config->id5ChineseLanguage = getInt(ini, "GameSpecific", "ID5_CHINESE_LANGUAGE", config->id5ChineseLanguage);
     config->idSteeringPercentageReduction =
         getFloat(ini, "GameSpecific", "ID_STEERING_REDUCTION_PERCENTAGE", config->idSteeringPercentageReduction);
-    config->outrunLensGlareEnabled = getInt(ini, "GameSpecific", "OUTRUN_LENS_GLARE_ENABLED", config->outrunLensGlareEnabled);
 
     // [CrossHairs]
     config->enableCrosshairs = getInt(ini, "CrossHairs", "ENABLE_CROSSHAIRS", config->enableCrosshairs);

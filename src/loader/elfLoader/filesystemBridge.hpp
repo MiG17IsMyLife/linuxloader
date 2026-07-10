@@ -102,27 +102,34 @@ struct linux_stat_ver3
     uint32_t __unused5;
 };
 
+struct linux_timespec
+{
+    int32_t tv_sec;
+    int32_t tv_nsec;
+};
+
 struct linux_stat64_safe
 {
-    uint64_t st_dev;
-    uint8_t __pad0[4];
-    uint32_t __st_ino;
-    uint32_t st_mode;
-    uint32_t st_nlink;
-    uint32_t st_uid;
-    uint32_t st_gid;
-    uint64_t st_rdev;
-    uint8_t __pad3[4];
-    int64_t st_size;
-    uint32_t st_blksize;
-    uint64_t st_blocks;
-    uint32_t st_atime;
-    uint32_t st_atime_nsec;
-    uint32_t st_mtime;
-    uint32_t st_mtime_nsec;
-    uint32_t st_ctime;
-    uint32_t st_ctime_nsec;
-    uint64_t st_ino;
+    unsigned long st_dev;
+    unsigned long st_dev_high;
+    char pad[8];
+    unsigned long st_mode;
+    unsigned long st_nlink;
+    unsigned long st_uid;
+    unsigned long st_gid;
+    unsigned long st_rdev;
+    unsigned long st_rdev_high;
+    char pad2[4];
+    long st_size;
+    long st_size_high;
+    unsigned long st_blksize;
+    unsigned long st_blocks;
+    unsigned long st_blocks_high;
+    linux_timespec st_atim;
+    linux_timespec st_mtim;
+    linux_timespec st_ctim;
+    unsigned long st_ino;
+    char pad3[4];
 };
 
 // =============================================================
@@ -137,8 +144,9 @@ struct linux_stat64_safe
 #define LINUX_S_IFCHR 0020000
 #define LINUX_S_IFIFO 0010000
 
-struct iovec {
-    void  *iov_base;
+struct iovec
+{
+    void *iov_base;
     size_t iov_len;
 };
 
@@ -155,7 +163,7 @@ namespace FileSystemBridge
     int bridgeFileno(FILE *stream);
     long int bridgeLseek(int fd, long int offset, int whence);
     int bridgeReadlink(const char *path, char *buf, size_t bufsiz);
-    FILE* bridgeFdopen(int fd, const char* mode);
+    FILE *bridgeFdopen(int fd, const char *mode);
     int bridgeSetvbuf(FILE *stream, char *buf, int mode, size_t size);
     size_t bridgeWritev(int fd, const struct iovec *iov, int iovcnt);
     ssize_t bridgeReadv(int fd, const struct iovec *iov, int iovcnt);

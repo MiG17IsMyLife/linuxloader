@@ -7,11 +7,11 @@ mkdir build-deps
 cd build-deps
 
 # Build SDL3
-git clone https://github.com/libsdl-org/SDL.git
+git clone --branch release-3.4.8 https://github.com/libsdl-org/SDL.git
 cd SDL
 mkdir build
 cd build
-cmake ../ -DCMAKE_C_FLAGS=-m32 -DCMAKE_INSTALL_PREFIX=/usr
+cmake ../ -DCMAKE_C_FLAGS=-m32 -DCMAKE_INSTALL_PREFIX=/usr 
 make -j4
 sudo make install
 cd ../../

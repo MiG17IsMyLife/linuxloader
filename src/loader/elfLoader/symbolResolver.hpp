@@ -24,6 +24,12 @@ class SymbolResolver
     // Initialize library search paths
     void InitSearchPaths(const std::string &libraryPathParam, const std::string &gameElfPath);
 
+    // Add a subdirectory relative to the DLL search base (exeDir/ll-deps or libraryPath)
+    void AddDllSearchSubPath(const std::string &subPath);
+
+    // Get the DLL search base path (exeDir/ll-deps or libraryPathParam)
+    std::string GetDllSearchBase() const { return m_DllSearchBase; }
+
     // Register a new mapped library (e.g. "openal32.dll" representing "libopenal.so")
     void RegisterLibrary(const std::string &linuxName, const std::string &windowsName);
 
@@ -66,6 +72,10 @@ class SymbolResolver
 
     // Library search paths
     std::vector<std::string> m_LibrarySearchPaths; // Ordered list of paths to search for libraries
+
+    // Stored paths for late addition of subdirectories
+    std::string m_ExeDir;          // Directory of the executable
+    std::string m_DllSearchBase;   // Base dll search path (exeDir/ll-deps or libraryPath)
 };
 #endif
 

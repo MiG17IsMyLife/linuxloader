@@ -36,11 +36,7 @@ struct tm32
     uint32_t tm_zone;
 };
 
-struct linux_timespec
-{
-    int32_t tv_sec;
-    int32_t tv_nsec;
-};
+
 
 struct linux_sigaction {
     void (*sa_handler)(int);
@@ -52,6 +48,7 @@ struct linux_sigaction {
 namespace LibcBridge
 {
     void initBridges();
+    int bridgeSetjmp(int *env);
 
     // STDIO interceptions
     int bridgePrintf(const char *format, ...);
@@ -150,6 +147,7 @@ namespace LibcBridge
     int bridgeSigfillset(void *set);
     int bridgeSigemptyset(void *set);
     int bridgeSigaction(int signum, const struct linux_sigaction *act, struct linux_sigaction *oldact);
+    int bridgeNice(int inc);
 
     // Wide char memory and string functions
     int bridgeWmemcmp(const uint32_t *s1, const uint32_t *s2, size_t n);

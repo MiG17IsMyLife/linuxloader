@@ -70,6 +70,8 @@ extern char vf5StageNameAbbr[5];
 
 extern bool mj4ResponseReady;
 
+bool sprFontXstLoaded = false;
+
 void ConvertPath(char *dst, const char *src, size_t size)
 {
     if (!src || !dst)
@@ -84,39 +86,11 @@ void ConvertPath(char *dst, const char *src, size_t size)
     }
 }
 
-DIR *sharedOpendir(const char *dirname)
-{
-    log_debug("Opendir %s\n", dirname);
-    DIR *(*_opendir)(const char *dirname) = REAL_FUNC(opendir);
-
-    if (strcmp(dirname, "/tmp/") == 0 && gGrp == GROUP_ID5)
-    {
-        return _opendir(dirname + 1);
-    }
-
-    if (strcmp(getConfig()->idCardFolder, "") != 0 && strcmp(dirname, ".") == 0)
-    {
-        if (gGrp == GROUP_ID5 || gGrp == GROUP_ID4_EXP || gGrp == GROUP_ID4_JAP)
-        {
-            char *newDirName = getConfig()->idCardFolder;
-            char lastChar = newDirName[strlen(newDirName) - 1];
-            if (lastChar == PATH_SEPARATOR)
-            {
-                newDirName[strlen(newDirName) - 1] = '\0';
-            }
-            return _opendir(newDirName);
-        }
-    }
-
-    if (strcmp(dirname, "/home/disk1/rankingdata") == 0 && (gGrp == GROUP_OUTRUN || gGrp == GROUP_OUTRUN_TEST))
-        return _opendir("./rankingdata");
-
-    return _opendir(dirname);
-}
-
+static int (*_remove)(const char *path) = NULL;
 int sharedRemove(const char *path)
 {
-    int (*_remove)(const char *path) = REAL_FUNC(remove);
+    if (_remove == NULL)
+        _remove = REAL_FUNC(remove);
 
     if (strncmp(path, "/home/disk1/rankingdata/", 24) == 0 && (gGrp == GROUP_OUTRUN || gGrp == GROUP_OUTRUN_TEST))
     {
@@ -149,7 +123,9 @@ int sharedRemove(const char *path)
 int sharedMkdir(const char *path, mode_t mode)
 {
 #ifdef __linux__
-    int (*_mkdir)(const char *path, mode_t mode) = dlsym(RTLD_NEXT, "mkdir");
+    static int (*_mkdir)(const char *path, mode_t mode) = NULL;
+    if (_mkdir == NULL)
+        _mkdir = REAL_FUNC(mkdir);
 #endif
 
     if (strncmp(path, "/tmp", 4) == 0)
@@ -176,19 +152,6 @@ int sharedMkdir(const char *path, mode_t mode)
 #endif
 }
 
-#ifdef __linux__
-int sharedXstat64(int ver, const char *path, struct stat64 *stat_buf)
-{
-    int (*___xstat64)(int ver, const char *path, struct stat64 *stat_buf) = dlsym(RTLD_NEXT, "__xstat64");
-
-    if (strcmp("/var/tmp/warning", path) == 0)
-    {
-        return ___xstat64(ver, "warning", stat_buf);
-    }
-    return ___xstat64(ver, path, stat_buf);
-}
-#endif
-
 #ifdef _WIN32
 static int translateOpenFlags(int flags)
 {
@@ -197,7 +160,7 @@ static int translateOpenFlags(int flags)
     // Access mode
     int accMode = flags & O_ACCMODE; // O_ACCMODE is 0x3
     if (accMode == 0)
-        winFlags |=  _O_RDONLY;
+        winFlags |= _O_RDONLY;
     else if (accMode == 1)
         winFlags |= _O_WRONLY;
     else if (accMode == 2)
@@ -231,12 +194,16 @@ static int translateOpenMode(int mode)
 
 int sharedOpen(const char *pathname, int flags, ...)
 {
+#ifdef __linux__
+    static int (*_open)(const char *pathname, int flags, ...) = NULL;
+    if (_open == NULL)
+        _open = REAL_FUNC(open);
+#endif
+
     va_list args;
     va_start(args, flags);
     int mode = va_arg(args, int);
     va_end(args);
-
-    int (*_open)(const char *pathname, int flags, ...) = REAL_FUNC(open);
 
     if (strcmp(pathname, "/dev/lbb") == 0)
     {
@@ -334,9 +301,11 @@ int sharedOpen64(const char *pathname, int flags, ...)
     return sharedOpen(pathname, flags, mode);
 }
 
+static FILE *(*_fopen)(const char *restrict pathname, const char *restrict mode) = NULL;
 FILE *sharedFopen(const char *restrict pathname, const char *restrict mode)
 {
-    FILE *(*_fopen)(const char *restrict pathname, const char *restrict mode) = REAL_FUNC(fopen);
+    if (_fopen == NULL)
+        _fopen = REAL_FUNC(fopen);
 
     if (strcmp(pathname, "/proc/net/route") == 0)
     {
@@ -469,19 +438,9 @@ FILE *sharedFopen(const char *restrict pathname, const char *restrict mode)
         return 0;
     }
 
-    /// FIX
-
     if (cachedShaderFilesLoaded)
     {
-        //     void *addr = __builtin_return_address(0);
-        //     Dl_info info;
-        //     if (!dladdr(addr, &info))
-        //     {
-        //         printf("dladdr failed\n");
-        //         exit(1);
-        //     }
         int idx;
-        //     if ((strcmp(info.dli_fname, "libstdc++.so.5") != 0) && (shaderFileInList(pathname, &idx)))
         if (shaderFileInList(pathname, &idx))
         {
             if (fileHooks[FILE_RW1] == NULL)
@@ -512,6 +471,9 @@ FILE *sharedFopen(const char *restrict pathname, const char *restrict mode)
     if (strncmp(pathname, "/var/tmp/seatini", 9) == 0)
         pathname += 5;
 
+    if(strstr(pathname, "spr_font_xst.gz") != NULL)
+        sprFontXstLoaded = true;
+            
 #ifdef WIN32
     char winPath[MAX_PATH];
     ConvertPath(winPath, pathname, MAX_PATH);
@@ -563,9 +525,11 @@ FILE *sharedFopen(const char *restrict pathname, const char *restrict mode)
 #endif
 }
 
+static FILE *(*_fopen64)(const char *restrict pathname, const char *restrict mode) = NULL;
 FILE *sharedFopen64(const char *pathname, const char *mode)
 {
-    FILE *(*_fopen64)(const char *restrict pathname, const char *restrict mode) = REAL_FUNC(fopen64);
+    if (_fopen64 == NULL)
+        _fopen64 = REAL_FUNC(fopen64);
 
     if (strcmp(pathname, "/proc/sys/kernel/osrelease") == 0)
     {
@@ -663,9 +627,12 @@ FILE *sharedFopen64(const char *pathname, const char *mode)
     return _fopen64(pathname, mode);
 }
 
+static int (*_fclose)(FILE *stream) = NULL;
 int sharedFclose(FILE *stream)
 {
-    int (*_fclose)(FILE *stream) = REAL_FUNC(fclose);
+    if (_fclose == NULL)
+        _fclose = REAL_FUNC(fclose);
+
     for (int i = 0; i < 9; i++)
     {
         if (fileHooks[i] == stream)
@@ -685,24 +652,14 @@ int sharedFclose(FILE *stream)
     return _fclose(stream);
 }
 
-#ifdef __linux__
-int sharedOpenat(int dirfd, const char *pathname, int flags, ...)
-{
-    int (*_openat)(int dirfd, const char *pathname, int flags) = dlsym(RTLD_NEXT, "openat");
-
-    if (strcmp(pathname, "/dev/ttyS0") == 0 || strcmp(pathname, "/dev/ttyS1") == 0 || strcmp(pathname, "/dev/tts/0") == 0 ||
-        strcmp(pathname, "/dev/tts/1") == 0)
-    {
-        return sharedOpen(pathname, flags);
-    }
-
-    return _openat(dirfd, pathname, flags);
-}
-#endif
-
 int sharedClose(int fd)
 {
-    int (*_close)(int fd) = REAL_FUNC(close);
+#ifdef __linux__
+    static int (*_close)(int fd) = NULL;
+    if (_close == NULL)
+        _close = REAL_FUNC(close);
+#endif
+
 
     for (size_t i = 0; i < (sizeof hooks / sizeof hooks[0]); i++)
     {
@@ -716,9 +673,11 @@ int sharedClose(int fd)
     return _close(fd);
 }
 
+static char *(*_fgets)(char *str, int n, FILE *stream) = NULL;
 char *sharedFgets(char *str, int n, FILE *stream)
 {
-    char *(*_fgets)(char *str, int n, FILE *stream) = REAL_FUNC(fgets);
+    if (_fgets == NULL)
+        _fgets = REAL_FUNC(fgets);
 
     if (stream == fileHooks[OSRELEASE])
     {
@@ -751,8 +710,12 @@ char *sharedFgets(char *str, int n, FILE *stream)
 
 ssize_t sharedRead(int fd, void *buf, size_t count)
 {
-    int (*_read)(int fd, void *buf, size_t count) = REAL_FUNC(read);
-    // void *addr = __builtin_return_address(0);
+#ifdef __linux__
+    static ssize_t (*_read)(int fd, void *buf, size_t count) = NULL;
+    if (_read == NULL)
+        _read = REAL_FUNC(read);
+#endif
+
     if (fd == (int)hooks[BASEBOARD])
     {
         return baseboardRead(fd, buf, count);
@@ -797,9 +760,11 @@ ssize_t sharedRead(int fd, void *buf, size_t count)
     return _read(fd, buf, count);
 }
 
+static size_t (*_fread)(void *buf, size_t size, size_t count, FILE *stream) = NULL;
 size_t sharedFread(void *buf, size_t size, size_t count, FILE *stream)
 {
-    size_t (*_fread)(void *buf, size_t size, size_t count, FILE *stream) = REAL_FUNC(fread);
+    if (_fread == NULL)
+        _fread = REAL_FUNC(fread);
 
     if (stream == fileHooks[PCI_CARD_1F0])
     {
@@ -844,9 +809,11 @@ size_t sharedFread(void *buf, size_t size, size_t count, FILE *stream)
     return _fread(buf, size, count, stream);
 }
 
+static long int (*_ftell)(FILE *stream) = NULL;
 long int sharedFtell(FILE *stream)
 {
-    long int (*_ftell)(FILE *stream) = REAL_FUNC(ftell);
+    if (_ftell == NULL)
+        _ftell = REAL_FUNC(ftell);
 
     if (stream == fileHooks[FILE_RW1])
     {
@@ -865,9 +832,11 @@ long int sharedFtell(FILE *stream)
     return _ftell(stream);
 }
 
+static int (*_fseek)(FILE *stream, long int offset, int whence) = NULL;
 int sharedFseek(FILE *stream, long int offset, int whence)
 {
-    int (*_fseek)(FILE *stream, long int offset, int whence) = REAL_FUNC(fseek);
+    if (_fseek == NULL)
+        _fseek = REAL_FUNC(fseek);
 
     if (stream == fileHooks[FILE_FONT_ABC])
     {
@@ -888,9 +857,11 @@ int sharedFseek(FILE *stream, long int offset, int whence)
     return _fseek(stream, offset, whence);
 }
 
+static void (*_rewind)(FILE *stream) = NULL;
 void sharedRewind(FILE *stream)
 {
-    void (*_rewind)(FILE *stream) = REAL_FUNC(rewind);
+    if (_rewind == NULL)
+        _rewind = REAL_FUNC(rewind);
 
     if (stream == fileHooks[FILE_FONT_ABC])
     {
@@ -903,7 +874,12 @@ void sharedRewind(FILE *stream)
 
 ssize_t sharedWrite(int fd, const void *buf, size_t count)
 {
-    int (*_write)(int fd, const void *buf, size_t count) = REAL_FUNC(write);
+#ifdef __linux__
+    static ssize_t (*_write)(int fd, const void *buf, size_t count) = NULL;
+    if (_write == NULL)
+        _write = REAL_FUNC(write);
+#endif
+
     // void *addr = __builtin_return_address(0);
     if (fd == (int)hooks[BASEBOARD])
     {
@@ -939,6 +915,7 @@ ssize_t sharedWrite(int fd, const void *buf, size_t count)
     return _write(fd, buf, count);
 }
 
+
 int sharedIoctl(int fd, unsigned long int request, ...)
 {
     va_list args;
@@ -947,8 +924,11 @@ int sharedIoctl(int fd, unsigned long int request, ...)
     va_end(args);
 
 #ifdef __linux__
-    int (*_ioctl)(int fd, int request, void *data) = REAL_FUNC(ioctl);
+    static int (*_ioctl)(int fd, int request, void *data) = NULL;
+    if (_ioctl == NULL)
+        _ioctl = REAL_FUNC(ioctl);
 #endif
+
     if (fd == (int)hooks[EEPROM])
     {
         if (request == 0xC04064A0)
@@ -999,11 +979,12 @@ int sharedIoctl(int fd, unsigned long int request, ...)
 #define LINUX_FD_ZERO_BIT(p) memset((void *)(p), 0, 128)
 #endif
 
+static int (*_select)(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) = NULL;
 int sharedSelect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout)
 {
 #ifdef __linux__
-    int (*_select)(int nfds, fd_set *restrict readfds, fd_set *restrict writefds, fd_set *restrict exceptfds,
-                   struct timeval *restrict timeout) = REAL_FUNC(select);
+    if (_select == NULL)
+        _select = REAL_FUNC(select);
 #endif
 
     int baseboardFd = hooks[BASEBOARD];
@@ -1042,9 +1023,36 @@ int sharedSelect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 }
 
 #ifdef __linux__
+DIR *(*_opendir)(const char *) = NULL;
 DIR *opendir(const char *dirname)
 {
-    return sharedOpendir(dirname);
+    if (_opendir == NULL)
+        _opendir = REAL_FUNC(opendir);
+    log_debug("Opendir %s\n", dirname);
+
+    if (strcmp(dirname, "/tmp/") == 0 && gGrp == GROUP_ID5)
+    {
+        return _opendir(dirname + 1);
+    }
+
+    if (strcmp(getConfig()->idCardFolder, "") != 0 && strcmp(dirname, ".") == 0)
+    {
+        if (gGrp == GROUP_ID5 || gGrp == GROUP_ID4_EXP || gGrp == GROUP_ID4_JAP)
+        {
+            char *newDirName = getConfig()->idCardFolder;
+            char lastChar = newDirName[strlen(newDirName) - 1];
+            if (lastChar == PATH_SEPARATOR)
+            {
+                newDirName[strlen(newDirName) - 1] = '\0';
+            }
+            return _opendir(newDirName);
+        }
+    }
+
+    if (strcmp(dirname, "/home/disk1/rankingdata") == 0 && (gGrp == GROUP_OUTRUN || gGrp == GROUP_OUTRUN_TEST))
+        return _opendir("./rankingdata");
+
+    return _opendir(dirname);
 }
 
 int remove(const char *path)
@@ -1057,9 +1065,18 @@ int mkdir(const char *path, mode_t mode)
     return sharedMkdir(path, mode);
 }
 
+static int (*___xstat64)(int ver, const char *path, struct stat64 *stat_buf) = NULL;
+
 int __xstat64(int ver, const char *path, struct stat64 *stat_buf)
 {
-    return sharedXstat64(ver, path, stat_buf);
+    if (___xstat64 == NULL)
+        ___xstat64 = REAL_FUNC(__xstat64);
+
+    if (strcmp("/var/tmp/warning", path) == 0)
+    {
+        return ___xstat64(ver, "warning", stat_buf);
+    }
+    return ___xstat64(ver, path, stat_buf);
 }
 
 int open(const char *pathname, int flags, ...)
@@ -1095,13 +1112,19 @@ int fclose(FILE *stream)
     return sharedFclose(stream);
 }
 
-int openat(int dirfd, const char *pathname, int flags, ...)
+static int (*_openat)(int dirfd, const char *pathname, int flags) = NULL;
+int openat(int dirfd, const char *pathname, int flags)
 {
-    va_list args;
-    va_start(args, flags);
-    int mode = va_arg(args, int);
-    va_end(args);
-    return sharedOpenat(dirfd, pathname, flags, mode);
+    if (_openat == NULL)
+        _openat = REAL_FUNC(openat);
+
+    if (strcmp(pathname, "/dev/ttyS0") == 0 || strcmp(pathname, "/dev/ttyS1") == 0 || strcmp(pathname, "/dev/tts/0") == 0 ||
+        strcmp(pathname, "/dev/tts/1") == 0)
+    {
+        return sharedOpen(pathname, flags);
+    }
+
+    return _openat(dirfd, pathname, flags);
 }
 
 int close(int fd)

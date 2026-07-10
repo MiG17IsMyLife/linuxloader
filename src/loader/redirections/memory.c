@@ -5,8 +5,6 @@
 
 #ifdef __linux__
 #define REAL_FUNC(name) dlsym(RTLD_NEXT, #name)
-#else
-#define REAL_FUNC(name) name
 #endif
 
 extern uint32_t gId;
@@ -35,7 +33,7 @@ static void init_mem_hooks(void)
 }
 
 
-void *myMalloc(size_t size)
+void *malloc(size_t size)
 {
     init_mem_hooks();
     void *p = real_malloc(size);
@@ -47,25 +45,25 @@ void *myMalloc(size_t size)
 }
 
 
-void *myRealloc(void *ptr, size_t size)
+void *realloc(void *ptr, size_t size)
 {
     init_mem_hooks();
     return real_realloc(ptr, size);
 }
 
 
-void *myCalloc(size_t nmemb, size_t size)
+void *calloc(size_t nmemb, size_t size)
 {
     init_mem_hooks();
     return real_calloc(nmemb, size);
 }
-void myFree(void *ptr)
+void free(void *ptr)
 {
     init_mem_hooks();
     real_free(ptr);
 }
 
-int myPosix_memalign(void **memptr, size_t alignment, size_t size)
+int posix_memalign(void **memptr, size_t alignment, size_t size)
 {
     init_mem_hooks();
     int res = real_posix_memalign(memptr, alignment, size);
@@ -76,7 +74,7 @@ int myPosix_memalign(void **memptr, size_t alignment, size_t size)
     return res;
 }
 
-void *myMemcpy(void *dest, const void *src, size_t n)
+void *emcpy(void *dest, const void *src, size_t n)
 {
     if (gGrp == GROUP_ABC && dest == src)
     {
@@ -85,36 +83,4 @@ void *myMemcpy(void *dest, const void *src, size_t n)
     void *(*_memcpy)(void *dest, const void *src, size_t n) = REAL_FUNC(memcpy);
     return _memcpy(dest, src, n);
 }
-
-#ifdef __linux__
-void *memcpy(void *dest, const void *src, size_t n)
-{
-    return myMemcpy(dest, src, n);
-}
-
-void *malloc(size_t size)
-{
-    return myMalloc(size);
-}
-
-void *realloc(void *ptr, size_t size)
-{
-    return myRealloc(ptr, size);
-}
-
-void *calloc(size_t nmemb, size_t size)
-{
-    return myCalloc(nmemb, size);
-}
-
-void free(void *ptr)
-{
-    return myFree(ptr);
-}
-
-int posix_memalign(void **memptr, size_t alignment, size_t size)
-{
-    return myPosix_memalign(memptr, alignment, size);
-}
-#endif
 #endif

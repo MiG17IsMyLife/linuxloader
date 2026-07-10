@@ -10,10 +10,9 @@
 #include "border.h"
 #include "../config/config.h"
 #include "../patching/patchResolution.h"
-// #include "glInitFunctions.h"
+#include "blitStretching.h"
 
 #ifdef __linux__
-#include <dlfcn.h>
 #include <pthread.h>
 static pthread_t pollingThreadId = 0;
 #else
@@ -28,8 +27,6 @@ extern uint32_t gId;
 extern int gGrp;
 extern int gWidth;
 extern int gHeight;
-extern int drawableW;
-extern int drawableH;
 
 extern int phX, phY, phW, phH;
 extern int phX2, phY2, phW2, phH2;
@@ -42,8 +39,6 @@ static GLint gUTextureLoc = -1;
 #ifndef _WIN32
 #define __stdcall
 #endif
-
-void(__stdcall *real_glDrawArrays)(GLenum, GLint, GLsizei) = NULL;
 
 bool p1CrossHairInitialized = false;
 bool p2CrossHairInitialized = false;
@@ -158,13 +153,6 @@ void initCrossHairs()
     if (!testMode && gId != PRIMEVAL_HUNT_SBPP)
         startPollingThread();
 
-    if (!real_glDrawArrays)
-#ifdef __linux__
-        real_glDrawArrays = dlsym(RTLD_NEXT, "glDrawArrays");
-#else
-        real_glDrawArrays = (__stdcall void (*)(GLenum, GLint, GLsizei))SDL_GL_GetProcAddress("glDrawArrays");
-#endif
-
     textureIdIdxAdjust = p1CrossHairInitialized + p2CrossHairInitialized;
 }
 
@@ -203,10 +191,9 @@ int loadCrosshairImage(int player, const char *filepath)
     crossHair[player].surface = SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA32);
     SDL_DestroySurface(surface);
 
-    crossHair[player].x = (int)(drawableW / 2.0f);
-    crossHair[player].y = (int)(drawableH / 2.0f);
+    crossHair[player].x = 0;
+    crossHair[player].y = 0;
     crossHair[player].visible = false;
-    // crossHair[player].lastMovementTime = time(NULL);
     crossHair[player].texture = 0;
     crossHair[player].vao = 0;
     crossHair[player].vbo = 0;
@@ -228,6 +215,9 @@ int loadCrosshairImage(int player, const char *filepath)
         crossHair[player].width = getConfig()->customCrossHairWidth;
         crossHair[player].height = getConfig()->customCrossHairHeight;
         crossHair[player].texture = tex;
+
+        /* Create VAO/VBO geometry — needed for shader-based rendering */
+        createCrosshairGeometry(&crossHair[player]);
     }
 
     return 1;
@@ -237,58 +227,100 @@ void updateCrosshairPosition(int player, float normX, float normY)
 {
     if (player < 0 || player >= MAX_PLAYERS)
         return;
-    crossHair[player].x = normX * drawableW;
-    crossHair[player].y = normY * drawableH;
-    // crossHair[player].lastMovementTime = time(NULL);
-    // crossHair[player].visible = true;
+
+    crossHair[player].x = normX * renderWidth;
+    crossHair[player].y = normY * renderHeight;
     if (testMode || gId == PRIMEVAL_HUNT_SBPP)
         crossHair[player].visible = true;
 }
 
 void renderCrosshairs(void)
 {
-    if (gId == GHOST_SQUAD_EVOLUTION_SBNJ)
-        return;
-
+    /* Save per-game viewport overrides before our save (these don't need restoring) */
     if (gId == PRIMEVAL_HUNT_SBPP)
         glad_glViewport(phX, phY, phW, phH);
     else if (gGrp == GROUP_HOD4_SP)
         glad_glViewport(0, 0, gWidth, gHeight);
 
-    GLint texFormat = 0;
-    glad_glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT, &texFormat);
+    /* Clear any accumulated GL errors before we start */
+    while (glad_glGetError() != GL_NO_ERROR)
+        ;
 
-    GLint last_program, last_vao, last_vbo, last_active_texture, last_depth_func;
-    GLboolean last_blend_enabled, last_depth_enabled; //, last_srgb_enabled;
-    GLint last_blend_src, last_blend_dst;
-    glad_glGetIntegerv(GL_CURRENT_PROGRAM, &last_program);
-    glad_glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &last_vao);
-    glad_glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &last_vbo);
-    glad_glGetIntegerv(GL_ACTIVE_TEXTURE, &last_active_texture);
-    last_blend_enabled = glad_glIsEnabled(GL_BLEND);
-    last_depth_enabled = glad_glIsEnabled(GL_DEPTH_TEST);
-    // last_srgb_enabled = _glIsEnabled(GL_FRAMEBUFFER_SRGB);
-    glad_glGetIntegerv(GL_BLEND_SRC_RGB, &last_blend_src);
-    glad_glGetIntegerv(GL_BLEND_DST_RGB, &last_blend_dst);
-    glad_glGetIntegerv(GL_DEPTH_FUNC, &last_depth_func);
+    /* ---- Surgical save of game state ---- */
+    GLint lastProgram, lastVao, lastVbo, lastActiveTex, lastTexBind, lastDepthFunc;
+    GLboolean lastBlendEnabled, lastDepthEnabled;
+    GLint lastBlendSrc, lastBlendDst;
+    GLint lastViewport[4];
+    GLint lastDrawFbo, lastReadFbo;
+    GLboolean lastDepthMask;
+    GLboolean lastScissorEnabled;
+    GLboolean lastColorMask[4];
+    GLfloat lastClearColor[4];
+    GLint lastDrawBuffer = GL_BACK, lastReadBuffer = GL_BACK;
 
-    // if (last_srgb_enabled)
-    //     _glDisable(GL_FRAMEBUFFER_SRGB);
+    glad_glGetIntegerv(GL_CURRENT_PROGRAM, &lastProgram);
+    glad_glGetIntegerv(GL_DRAW_BUFFER, &lastDrawBuffer);
+    glad_glGetIntegerv(GL_READ_BUFFER, &lastReadBuffer);
+    glad_glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &lastVao);
+    glad_glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &lastVbo);
+    glad_glGetIntegerv(GL_ACTIVE_TEXTURE, &lastActiveTex);
+    glad_glGetIntegerv(GL_VIEWPORT, lastViewport);
+    glad_glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &lastDrawFbo);
+    glad_glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &lastReadFbo);
+    glad_glGetIntegerv(GL_DEPTH_FUNC, &lastDepthFunc);
+    glad_glGetBooleanv(GL_DEPTH_WRITEMASK, &lastDepthMask);
+    glad_glGetBooleanv(GL_COLOR_WRITEMASK, lastColorMask);
+    glad_glGetFloatv(GL_COLOR_CLEAR_VALUE, lastClearColor);
+
+    /* Save texture bound to unit 0 */
+    glad_glActiveTexture(GL_TEXTURE0);
+    glad_glGetIntegerv(GL_TEXTURE_BINDING_2D, &lastTexBind);
+
+    lastBlendEnabled = glad_glIsEnabled(GL_BLEND);
+    lastDepthEnabled = glad_glIsEnabled(GL_DEPTH_TEST);
+    lastScissorEnabled = glad_glIsEnabled(GL_SCISSOR_TEST);
+    GLboolean lastStencilEnabled = glad_glIsEnabled(GL_STENCIL_TEST);
+    GLboolean lastAlphaTestEnabled = glad_glIsEnabled(GL_ALPHA_TEST);
+    GLboolean lastCullFaceEnabled = glad_glIsEnabled(GL_CULL_FACE);
+    glad_glGetIntegerv(GL_BLEND_SRC_RGB, &lastBlendSrc);
+    glad_glGetIntegerv(GL_BLEND_DST_RGB, &lastBlendDst);
+    GLint lastBlendEq = GL_FUNC_ADD;
+    glad_glGetIntegerv(GL_BLEND_EQUATION_RGB, &lastBlendEq);
+
+    glad_glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    // glad_glViewport(0, 0, renderWidth, renderHeight);
+
     glad_glDisable(GL_DEPTH_TEST);
     glad_glDepthFunc(GL_ALWAYS);
+    glad_glDepthMask(GL_FALSE);
     glad_glEnable(GL_BLEND);
     glad_glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glad_glBlendEquation(GL_FUNC_ADD);
     glad_glUseProgram(gShaderProgram);
     glad_glActiveTexture(GL_TEXTURE0);
     glad_glUniform1i(gUTextureLoc, 0);
 
-    // time_t currentTime = time(NULL);
+    /* Force all color channels writable */
+    glad_glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+    /* Disable scissor so it doesn't clip our rendering */
+    glad_glDisable(GL_SCISSOR_TEST);
+
+    /* Disable stencil and alpha test */
+    glad_glDisable(GL_STENCIL_TEST);
+    glad_glDisable(GL_ALPHA_TEST);
+    glad_glDisable(GL_CULL_FACE);
+
+    /* Force draw/read buffer to GL_BACK — game may have set GL_FRONT or GL_NONE */
+    glad_glDrawBuffer(GL_BACK);
+    glad_glReadBuffer(GL_BACK);
+
+    if(gId == GHOST_SQUAD_EVOLUTION_SBNJ && getConfig()->borderEnabled)
+        drawGameBorder(640, 480, getConfig()->whiteBorderPercentage, getConfig()->blackBorderPercentage);
+
+    /* ---- Render crosshairs ---- */
     for (int i = 0; i < MAX_PLAYERS; ++i)
     {
-        // if (difftime(currentTime, crossHair[i].lastMovementTime) > INACTIVITY_TIMEOUT)
-        // {
-        //     crossHair[i].visible = false;
-        // }
         if (!crossHair[i].visible)
             continue;
 
@@ -314,8 +346,8 @@ void renderCrosshairs(void)
             float x = crossHair[i].x - (crossHair[i].width / 2.0f);
             float y = crossHair[i].y - (crossHair[i].height / 2.0f);
             float projection[16] = {0.0f};
-            projection[0] = 2.0f / drawableW;
-            projection[5] = -2.0f / drawableH;
+            projection[0] = 2.0f / renderWidth;
+            projection[5] = -2.0f / renderHeight;
             projection[10] = -1.0f;
             projection[12] = -1.0f + (x * projection[0]);
             projection[13] = 1.0f + (y * projection[5]);
@@ -324,92 +356,63 @@ void renderCrosshairs(void)
 
             glad_glBindTexture(GL_TEXTURE_2D, crossHair[i].texture);
             glad_glBindVertexArray(crossHair[i].vao);
-            real_glDrawArrays(GL_TRIANGLES, 0, 6);
+            glad_glDrawArrays(GL_TRIANGLES, 0, 6);
         }
     }
 
-    glad_glBindVertexArray(last_vao);
-    glad_glBindBuffer(GL_ARRAY_BUFFER, last_vbo);
-    glad_glUseProgram(last_program);
-    glad_glActiveTexture(last_active_texture);
-    glad_glBlendFunc(last_blend_src, last_blend_dst);
-    if (last_blend_enabled)
+    /* Clear any GL errors our rendering may have generated */
+    while (glad_glGetError() != GL_NO_ERROR)
+        ;
+
+    /* ---- Restore game state ---- */
+    glad_glActiveTexture(GL_TEXTURE0);
+    glad_glBindTexture(GL_TEXTURE_2D, (GLuint)lastTexBind);
+    glad_glBindVertexArray((GLuint)lastVao);
+    glad_glBindBuffer(GL_ARRAY_BUFFER, (GLuint)lastVbo);
+    glad_glUseProgram((GLuint)lastProgram);
+    glad_glActiveTexture((GLenum)lastActiveTex);
+    glad_glBlendFunc((GLenum)lastBlendSrc, (GLenum)lastBlendDst);
+    glad_glBlendEquation((GLenum)lastBlendEq);
+    if (lastBlendEnabled)
         glad_glEnable(GL_BLEND);
     else
         glad_glDisable(GL_BLEND);
-    if (last_depth_enabled)
+    if (lastDepthEnabled)
         glad_glEnable(GL_DEPTH_TEST);
     else
         glad_glDisable(GL_DEPTH_TEST);
-    glad_glDepthFunc(last_depth_func);
-    // if (last_srgb_enabled)
-    //     _glEnable(GL_FRAMEBUFFER_SRGB);
-}
+    glad_glDepthFunc((GLenum)lastDepthFunc);
+    glad_glDepthMask(lastDepthMask);
+    if (lastScissorEnabled)
+        glad_glEnable(GL_SCISSOR_TEST);
+    else
+        glad_glDisable(GL_SCISSOR_TEST);
+    if (lastStencilEnabled)
+        glad_glEnable(GL_STENCIL_TEST);
+    else
+        glad_glDisable(GL_STENCIL_TEST);
+    if (lastAlphaTestEnabled)
+        glad_glEnable(GL_ALPHA_TEST);
+    else
+        glad_glDisable(GL_ALPHA_TEST);
+    if (lastCullFaceEnabled)
+        glad_glEnable(GL_CULL_FACE);
+    else
+        glad_glDisable(GL_CULL_FACE);
+    glad_glClearColor(lastClearColor[0], lastClearColor[1],
+                      lastClearColor[2], lastClearColor[3]);
+    glad_glColorMask(lastColorMask[0], lastColorMask[1],
+                     lastColorMask[2], lastColorMask[3]);
+    glad_glDrawBuffer((GLenum)lastDrawBuffer);
+    glad_glReadBuffer((GLenum)lastReadBuffer);
+    glad_glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)lastReadFbo);
+    glad_glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)lastDrawFbo);
+    glad_glViewport(lastViewport[0], lastViewport[1],
+                    lastViewport[2], lastViewport[3]);
 
-void bindAndPosition(Crosshair *c)
-{
-    if (!c->texture)
-        return;
-    ;
-
-    float x = c->x - c->width / 2.0f;
-    float y = c->y - c->height / 2.0f;
-
-    glad_glBindTexture(GL_TEXTURE_2D, c->texture);
-    glad_glColor4f(1, 1, 1, 1);
-    glad_glBegin(GL_QUADS);
-    glad_glTexCoord2f(0, 0);
-    glad_glVertex2f(x, y);
-    glad_glTexCoord2f(1, 0);
-    glad_glVertex2f(x + c->width, y);
-    glad_glTexCoord2f(1, 1);
-    glad_glVertex2f(x + c->width, y + c->height);
-    glad_glTexCoord2f(0, 1);
-    glad_glVertex2f(x, y + c->height);
-    glad_glEnd();
-}
-
-void renderGsEvoCrosshairs(void)
-{
-    GLint texFormat = 0;
-    glad_glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT, &texFormat);
-
-    if (texFormat == 0x1908 || texFormat == 0x1 || texFormat == 0x8051)
-        return;
-
-    EmulatorConfig *config = getConfig();
-    if (config->borderEnabled)
-        drawGameBorder(640, 480, config->whiteBorderPercentage, config->blackBorderPercentage);
-
-    glad_glPushAttrib(GL_ALL_ATTRIB_BITS);
-    // glad_glDisable(GL_DEPTH_TEST); // for HOD4
-    glad_glDepthMask(GL_FALSE);
-    glad_glEnable(GL_TEXTURE_2D);
-    glad_glEnable(GL_BLEND);
-    glad_glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glad_glMatrixMode(GL_PROJECTION);
-    glad_glPushMatrix();
-    glad_glLoadIdentity();
-    glad_glOrtho(0, drawableW, drawableH, 0, -1, 1);
-    glad_glMatrixMode(GL_MODELVIEW);
-    glad_glPushMatrix();
-    glad_glLoadIdentity();
-
-    if (p1CrossHairInitialized && crossHair[0].visible)
-        bindAndPosition(&crossHair[0]);
-
-    if (p2CrossHairInitialized && crossHair[1].visible)
-        bindAndPosition(&crossHair[1]);
-
-    glad_glPopMatrix();
-    glad_glMatrixMode(GL_PROJECTION);
-    glad_glPopMatrix();
-    glad_glMatrixMode(GL_MODELVIEW);
-    glad_glDisable(GL_BLEND);
-    glad_glDisable(GL_TEXTURE_2D);
-    glad_glDepthMask(GL_TRUE);
-    glad_glEnable(GL_DEPTH_TEST);
-    glad_glPopAttrib();
+    /* Final error clear — restore calls may also generate errors */
+    while (glad_glGetError() != GL_NO_ERROR)
+        ;
 }
 
 void destroyCrosshairs(void)
@@ -428,30 +431,6 @@ void destroyCrosshairs(void)
     }
     if (gShaderProgram)
         glad_glDeleteProgram(gShaderProgram);
-}
-
-#ifdef __linux__
-#undef glDrawArrays
-void glDrawArrays(GLenum mode, GLint first, GLsizei count)
-{
-#else
-void bridgeglDrawArrays(GLenum mode, GLint first, GLsizei count)
-{
-#endif
-
-    if (gId == GHOST_SQUAD_EVOLUTION_SBNJ)
-    {
-        GLint currentFBO = 0;
-        glad_glGetIntegerv(GL_FRAMEBUFFER_BINDING_EXT, &currentFBO);
-        renderGsEvoCrosshairs();
-    }
-    if (!real_glDrawArrays)
-#ifdef __linux__
-       real_glDrawArrays = dlsym(RTLD_NEXT, "glDrawArrays");
-#else
-       real_glDrawArrays = (__stdcall void (*)(GLenum, GLint, GLsizei))SDL_GL_GetProcAddress("glDrawArrays");
-#endif
-    real_glDrawArrays(mode, first, count);
 }
 
 typedef struct
