@@ -8,24 +8,6 @@
 #include <stdarg.h>
 #include <pthread.h>
 
-GUID EAX_NULL_GUID;
-GUID EAX_FREQUENCYSHIFTER_EFFECT;
-GUID EAX_ECHO_EFFECT;
-GUID EAX_REVERB_EFFECT;
-GUID EAX_EQUALIZER_EFFECT;
-GUID EAX_DISTORTION_EFFECT;
-GUID EAX_AGCCOMPRESSOR_EFFECT;
-GUID EAX_PITCHSHIFTER_EFFECT;
-GUID EAX_FLANGER_EFFECT;
-GUID EAX_VOCALMORPHER_EFFECT;
-GUID EAX_AUTOWAH_EFFECT;
-GUID EAX_RINGMODULATOR_EFFECT;
-GUID EAX_CHORUS_EFFECT;
-GUID EAXPROPERTYID_EAX40_FXSlot0;
-GUID EAXPROPERTYID_EAX40_FXSlot1;
-GUID EAXPROPERTYID_EAX40_FXSlot2;
-GUID EAXPROPERTYID_EAX40_FXSlot3;
-
 #define HANDLE_CHECK(handle, returnValue)                                                                              \
     if (handle == NULL)                                                                                                \
     {                                                                                                                  \
