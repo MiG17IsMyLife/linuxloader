@@ -34,11 +34,13 @@ The follow list of games are supported. It is worth noting that there are multip
 | Let's Go Jungle Special               | SBNR    | Lindbergh Yellow | DVP-0036  | ✓      | ✓      | ✓       |
 | Outrun 2 SP SDX                       | SBMB    | Lindbergh Yellow | DVP-0015  | ✓      | ✓      | ✓       |
 | Outrun 2 SP SDX Rev A                 | SBMB    | Lindbergh Yellow | DVP-0015A | ✓      | ✓      | ✓       |
+| Primeval Hunt                         | SBPP    | Lindbergh Red    | DVP-0048  | ✓      | ✓      | ✓       |
 | The House of the Dead 4 Rev A         | SBLC    | Lindbergh Yellow | DVP-0003A | ✓      | ✓      | ✓       |
 | The House of the Dead 4 Rev B         | SBLC    | Lindbergh Yellow | DVP-0003B | ✓      | ✓      | ✓       |
 | The House of the Dead 4 Rev C         | SBLC    | Lindbergh Yellow | DVP-0003C | ✓      | ✓      | ✓       |
 | The House of the Dead 4 Special       | SBLS    | Lindbergh Yellow | DVP-0010  | ✓      | ✓      | ✓       |
 | The House of the Dead 4 Special Rev B | SBLS    | Lindbergh Yellow | DVP-0010B | ✓      | ✓      | ✓       |
+| The House of the Dead EX              | SBRC    | Lindbergh Red    | DVP-0063  | ✓      | ✓      | ✓       |
 | Too Spicy                             | SBMV    | Lindbergh Red    | DVP-0027  | ✓      | ✓      | ✓       |
 | Virtua Tennis 3                       | SBKX    | Lindbergh Yellow | DVP-0005  | ✓      | ✓      | ✓       |
 | Virtua Tennis 3 Rev A                 | SBKX    | Lindbergh Yellow | DVP-0005A | ✓      | ✓      | ✓       |

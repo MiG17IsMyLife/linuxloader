@@ -829,6 +829,13 @@ extern "C" void __attribute__((cdecl)) wrap_glPixelTransferi(GLenum pname, GLint
         glad_glPixelTransferi(pname, param);
 }
 
+extern "C" void __attribute__((cdecl)) wrap_glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type,
+                                                         GLvoid *pixels)
+{
+    if (glad_glReadPixels)
+        glad_glReadPixels(x, y, width, height, format, type, pixels);
+}
+
 extern "C" void __attribute__((cdecl)) wrap_glShaderSource(GLuint shader, GLsizei count, const GLchar *const *string, const GLint *length)
 {
     if (glad_glShaderSource)
@@ -2188,8 +2195,6 @@ void *GLHooks_GetProcAddress(const char *procName)
         return (void *)&wrap_glDisableVertexAttribArray;
     if (strcmp(procName, "glDisableVertexAttribArrayARB") == 0)
         return (void *)&wrap_glDisableVertexAttribArrayARB;
-    if (strcmp(procName, "glDrawArrays") == 0)
-        return (void *)&wrap_glDrawArrays;
     if (strcmp(procName, "glDrawArraysEXT") == 0)
         return (void *)&wrap_glDrawArraysEXT;
     if (strcmp(procName, "glDrawBuffer") == 0)
@@ -2462,6 +2467,8 @@ void *GLHooks_GetProcAddress(const char *procName)
         return (void *)&wrap_glRasterPos3f;
     if (strcmp(procName, "glReadBuffer") == 0)
         return (void *)&wrap_glReadBuffer;
+    if (strcmp(procName, "glReadPixels") == 0)
+        return (void *)&wrap_glReadPixels;
     if (strcmp(procName, "glRectf") == 0)
         return (void *)&wrap_glRectf;
     if (strcmp(procName, "glRecti") == 0)
@@ -2634,7 +2641,6 @@ void *GLHooks_GetProcAddress(const char *procName)
         return (void *)&wrap_glPointParameteri;
     if (strcmp(procName, "glGenQueries") == 0)
         return (void *)&wrap_glGenQueries;
-
     if (strcmp(procName, "glSecondaryColor3f") == 0)
         return (void *)&wrap_glSecondaryColor3f;
     if (strcmp(procName, "glUniform3fvARB") == 0)
