@@ -2,11 +2,6 @@
 
 All notable changes to this project will be documented in this file.
 
-## [3.0.9]
-### Added
-### Fixed
-    - Fixed a bug in libsegaapi the I messe cleaning up code.
-
 ## [3.0.8]
 ### Added
     - Fps overlay counter (F12 toggle). Option in config file for position and auto enabled.
