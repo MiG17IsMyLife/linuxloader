@@ -6,10 +6,16 @@
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <algorithm>
+#include <climits>
 #include <mutex>
 #include <cerrno>
+#include <unordered_set>
+#include <vector>
 
 static std::mutex g_net_mutex;
+static std::mutex g_socket_mutex;
+static std::unordered_set<SOCKET> g_socket_descriptors;
 
 #define MAP(name, func) SymbolResolver::GetInstance().RegisterVTable(name, reinterpret_cast<void *>(func))
 
@@ -207,6 +213,12 @@ static int mapWSAErrorToErrno(int wsaError)
 
 namespace NetworkBridge
 {
+    static void registerSocket(SOCKET socket)
+    {
+        std::lock_guard<std::mutex> lock(g_socket_mutex);
+        g_socket_descriptors.insert(socket);
+    }
+
     void initBridges()
     {
         log_info("Initializing Network Bridges...");
@@ -220,10 +232,15 @@ namespace NetworkBridge
         MAP("recv", bridgeRecv);
         MAP("sendto", bridgeSendto);
         MAP("recvfrom", bridgeRecvfrom);
+        MAP("sendmsg", bridgeSendmsg);
+        MAP("recvmsg", bridgeRecvmsg);
+        MAP("getpeername", bridgeGetpeername);
+        MAP("getsockname", bridgeGetsockname);
         MAP("shutdown", shutdown);
         MAP("setsockopt", bridgeSetsockopt);
         MAP("getsockopt", bridgeGetsockopt);
         MAP("inet_pton", bridgeInet_pton);
+        MAP("inet_ntop", bridgeInet_ntop);
         MAP("inet_aton", bridgeInet_aton);
         MAP("inet_addr", bridgeInet_addr);
         MAP("inet_ntoa", bridgeInet_ntoa);
@@ -260,6 +277,20 @@ namespace NetworkBridge
         return InetPtonA(af, src, dst);
     }
 
+    const char *bridgeInet_ntop(int af, const void *src, char *dst, size_t size)
+    {
+        if (!src || !dst || size == 0)
+        {
+            errno = EINVAL;
+            return nullptr;
+        }
+
+        const char *result = InetNtopA(af, const_cast<void *>(src), dst, size);
+        if (!result)
+            errno = mapWSAErrorToErrno(WSAGetLastError());
+        return result;
+    }
+
     char *bridgeInet_ntoa(struct in_addr in)
     {
         return inet_ntoa(in);
@@ -280,6 +311,37 @@ namespace NetworkBridge
     {
         return htonl(hostlong);
     }
+
+    bool isSocketDescriptor(int descriptor)
+    {
+        std::lock_guard<std::mutex> lock(g_socket_mutex);
+        return g_socket_descriptors.find(static_cast<SOCKET>(descriptor)) != g_socket_descriptors.end();
+    }
+
+    int bridgeSocketRead(int descriptor, void *buffer, size_t length)
+    {
+        return bridgeRecv(static_cast<SOCKET>(descriptor), static_cast<char *>(buffer),
+                          static_cast<int>(std::min(length, static_cast<size_t>(INT_MAX))), 0);
+    }
+
+    int bridgeSocketWrite(int descriptor, const void *buffer, size_t length)
+    {
+        return bridgeSend(static_cast<SOCKET>(descriptor), static_cast<const char *>(buffer),
+                          static_cast<int>(std::min(length, static_cast<size_t>(INT_MAX))), 0);
+    }
+
+    int bridgeSocketClose(int descriptor)
+    {
+        const SOCKET socket = static_cast<SOCKET>(descriptor);
+        {
+            std::lock_guard<std::mutex> lock(g_socket_mutex);
+            g_socket_descriptors.erase(socket);
+        }
+        const int result = closesocket(socket);
+        if (result == SOCKET_ERROR)
+            errno = mapWSAErrorToErrno(WSAGetLastError());
+        return result;
+    }
 }; // namespace NetworkBridge
 
 extern "C" SOCKET bridgeSocket(int af, int type, int protocol)
@@ -292,6 +354,7 @@ extern "C" SOCKET bridgeSocket(int af, int type, int protocol)
         return (SOCKET)-1;
     }
     log_info(">>> socket EXIT: returning %lld", (long long)s);
+    NetworkBridge::registerSocket(s);
     return s;
 }
 
@@ -341,6 +404,7 @@ extern "C" SOCKET bridgeAccept(SOCKET s, struct sockaddr *addr, int *addrlen)
         return (SOCKET)-1;
     }
     log_info(">>> accept EXIT: returning %lld (WSAError=%d)", (long long)ret, ret == INVALID_SOCKET ? WSAGetLastError() : 0);
+    NetworkBridge::registerSocket(ret);
     return ret;
 }
 
@@ -401,6 +465,146 @@ extern "C" int bridgeSendto(SOCKET s, const char *buf, int len, int flags, const
         errno = mapWSAErrorToErrno(WSAGetLastError());
     }
     log_info(">>> sendto EXIT: returning %d", ret);
+    return ret;
+}
+
+/*
+ * Linux message flags the Windows sockets API either does not know or spells
+ * differently.  MSG_DONTWAIT and MSG_NOSIGNAL have no Winsock equivalent - the
+ * socket's own blocking mode covers the first and Windows never raises SIGPIPE
+ * - so they are simply dropped, matching bridgeSend()/bridgeRecv().
+ */
+static constexpr int linuxMsgDontWait = 0x40;
+static constexpr int linuxMsgNoSignal = 0x4000;
+static constexpr int linuxMsgWaitAll = 0x100;
+
+static int translateMessageFlags(int flags)
+{
+    int translated = flags & ~(linuxMsgDontWait | linuxMsgNoSignal | linuxMsgWaitAll);
+    if (flags & linuxMsgWaitAll)
+        translated |= MSG_WAITALL;
+    return translated;
+}
+
+// Winsock stores the length before the pointer, so the vectors must be rebuilt.
+static bool buildWsaBuffers(const LinuxMsghdr *message, std::vector<WSABUF> &buffers)
+{
+    if (!message)
+    {
+        errno = EFAULT;
+        return false;
+    }
+
+    if (message->iovCount && !message->iov)
+    {
+        errno = EFAULT;
+        return false;
+    }
+
+    buffers.resize(message->iovCount);
+    for (uint32_t i = 0; i < message->iovCount; ++i)
+    {
+        buffers[i].len = static_cast<ULONG>(message->iov[i].length);
+        buffers[i].buf = static_cast<CHAR *>(message->iov[i].base);
+    }
+    return true;
+}
+
+extern "C" int bridgeSendmsg(SOCKET s, const LinuxMsghdr *message, int flags)
+{
+    std::vector<WSABUF> buffers;
+    if (!buildWsaBuffers(message, buffers))
+        return -1;
+
+    if (message->controlLength)
+    {
+        // Only used for SCM_RIGHTS style ancillary data, which the LAN code
+        // never sends; dropping it is safer than failing the whole transfer.
+        log_warn(">>> sendmsg: dropping %u bytes of ancillary data",
+                 static_cast<unsigned>(message->controlLength));
+    }
+
+    DWORD sent = 0;
+    const DWORD wsaFlags = static_cast<DWORD>(translateMessageFlags(flags));
+    int ret;
+    if (message->name && message->nameLength)
+        ret = WSASendTo(s, buffers.data(), static_cast<DWORD>(buffers.size()), &sent, wsaFlags,
+                        static_cast<const struct sockaddr *>(message->name),
+                        static_cast<int>(message->nameLength), nullptr, nullptr);
+    else
+        ret = WSASend(s, buffers.data(), static_cast<DWORD>(buffers.size()), &sent, wsaFlags,
+                      nullptr, nullptr);
+
+    if (ret == SOCKET_ERROR)
+    {
+        errno = mapWSAErrorToErrno(WSAGetLastError());
+        log_info(">>> sendmsg EXIT: returning -1 (WSAError=%d)", WSAGetLastError());
+        return -1;
+    }
+
+    log_info(">>> sendmsg EXIT: socket=%lld sent %lu bytes in %u buffers",
+             (long long)s, (unsigned long)sent, static_cast<unsigned>(buffers.size()));
+    return static_cast<int>(sent);
+}
+
+extern "C" int bridgeRecvmsg(SOCKET s, LinuxMsghdr *message, int flags)
+{
+    std::vector<WSABUF> buffers;
+    if (!buildWsaBuffers(message, buffers))
+        return -1;
+
+    DWORD received = 0;
+    DWORD wsaFlags = static_cast<DWORD>(translateMessageFlags(flags));
+    int ret;
+    if (message->name && message->nameLength)
+    {
+        int nameLength = static_cast<int>(message->nameLength);
+        ret = WSARecvFrom(s, buffers.data(), static_cast<DWORD>(buffers.size()), &received, &wsaFlags,
+                          static_cast<struct sockaddr *>(message->name), &nameLength, nullptr, nullptr);
+        if (ret != SOCKET_ERROR)
+            message->nameLength = static_cast<uint32_t>(nameLength);
+    }
+    else
+    {
+        ret = WSARecv(s, buffers.data(), static_cast<DWORD>(buffers.size()), &received, &wsaFlags,
+                      nullptr, nullptr);
+    }
+
+    if (ret == SOCKET_ERROR)
+    {
+        errno = mapWSAErrorToErrno(WSAGetLastError());
+        log_info(">>> recvmsg EXIT: returning -1 (WSAError=%d)", WSAGetLastError());
+        return -1;
+    }
+
+    // Windows never reports ancillary data, so the caller must see none.
+    message->controlLength = 0;
+    message->flags = static_cast<int32_t>(wsaFlags);
+
+    log_info(">>> recvmsg EXIT: socket=%lld received %lu bytes in %u buffers",
+             (long long)s, (unsigned long)received, static_cast<unsigned>(buffers.size()));
+    return static_cast<int>(received);
+}
+
+extern "C" int bridgeGetpeername(SOCKET s, struct sockaddr *name, int *namelen)
+{
+    int ret = getpeername(s, name, namelen);
+    if (ret == SOCKET_ERROR)
+    {
+        errno = mapWSAErrorToErrno(WSAGetLastError());
+        log_info(">>> getpeername EXIT: returning -1 (WSAError=%d)", WSAGetLastError());
+    }
+    return ret;
+}
+
+extern "C" int bridgeGetsockname(SOCKET s, struct sockaddr *name, int *namelen)
+{
+    int ret = getsockname(s, name, namelen);
+    if (ret == SOCKET_ERROR)
+    {
+        errno = mapWSAErrorToErrno(WSAGetLastError());
+        log_info(">>> getsockname EXIT: returning -1 (WSAError=%d)", WSAGetLastError());
+    }
     return ret;
 }
 

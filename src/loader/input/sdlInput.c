@@ -179,6 +179,7 @@ const int NUM_ACTION_NAMES = sizeof(gActionNameMap) / sizeof(gActionNameMap[0]);
 extern const ControlBinding gDefaultCommonBindings[];
 extern const ControlBinding gDefaultDigitalBindings[];
 extern const ControlBinding gDefaultDrivingBindings[];
+extern const ControlBinding gDefaultWmmtBindings[];
 extern const ControlBinding gDefaultFlyingBindings[];
 extern const ControlBinding gDefaultShootingBindings[];
 extern const ControlBinding gDefaultMahjongBindings[];
@@ -186,6 +187,7 @@ extern const ControlBinding gDefaultMahjongBindings[];
 extern const size_t gDefaultCommonBindingsSize;
 extern const size_t gDefaultDigitalBindingsSize;
 extern const size_t gDefaultDrivingBindingsSize;
+extern const size_t gDefaultWmmtBindingsSize;
 extern const size_t gDefaultFlyingBindingsSize;
 extern const size_t gDefaultShootingBindingsSize;
 extern const size_t gDefaultMahjongBindingsSize;
@@ -268,7 +270,10 @@ int initSdlInput(const char *controlsPath)
         printf("Found controls.ini, loading custom configuration...\n");
         loadGlobalConfig(ini);
         loadProfileFromIni(iniGetSection(ini, "Common"));
-        if (gameType == DRIVING)
+        // Namco N2 reports itself as a driving game but has its own panel.
+        if (gGrp == GROUP_WMMT3)
+            isProfileLoaded = loadProfileFromIni(iniGetSection(ini, "WMMT"));
+        else if (gameType == DRIVING)
             isProfileLoaded = loadProfileFromIni(iniGetSection(ini, "Driving"));
         else if (gameType == DIGITAL)
             isProfileLoaded = loadProfileFromIni(iniGetSection(ini, "Digital"));
@@ -577,7 +582,25 @@ void initJvsMappings()
  */
 void remapPerGame()
 {
-    if (gId == R_TUNED_SBQW)
+    if (gGrp == GROUP_WMMT3)
+    {
+        /*
+         * Namco N2 uses the common driving profile, but its two cabinet
+         * buttons are regular JVS buttons rather than directions.
+         * GearUp/GearDown intentionally remain on PLAYER_2 so existing
+         * Lindbergh controls.ini files and generated defaults keep working.
+         */
+        gJvsMap[PLAYER_1][LA_ViewChange] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_1};
+        gJvsMap[PLAYER_1][LA_MusicChange] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_2};
+
+        /*
+         * The DRIVING default puts CardInsert on PLAYER_1 BUTTON_UP, which on
+         * N2 is the shifter, so the card key would shift gears. WMMT3 reads
+         * its card through /dev/ttyM2 and has no JVS card switch at all.
+         */
+        gJvsMap[PLAYER_1][LA_CardInsert] = (JVSActionMapping){JVS_CALL_NONE, NONE};
+    }
+    else if (gId == R_TUNED_SBQW)
     {
         gJvsMap[PLAYER_1][LA_BoostRight] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_RIGHT};
         gJvsMap[PLAYER_1][LA_CardInsert] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_UP};
@@ -850,7 +873,12 @@ void setDefaultMappings()
     const ControlBinding *game_bindings = NULL;
     size_t bindingsCount = 0;
 
-    if (gameType == DIGITAL)
+    if (gGrp == GROUP_WMMT3)
+    {
+        game_bindings = gDefaultWmmtBindings;
+        bindingsCount = gDefaultWmmtBindingsSize;
+    }
+    else if (gameType == DIGITAL)
     {
         game_bindings = gDefaultDigitalBindings;
         bindingsCount = gDefaultDigitalBindingsSize;

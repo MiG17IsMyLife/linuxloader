@@ -125,6 +125,65 @@ const ControlBinding gDefaultDrivingBindings[] = {
 
 const size_t gDefaultDrivingBindingsSize = sizeof(gDefaultDrivingBindings) / sizeof(gDefaultDrivingBindings[0]);
 
+/*
+ * Wangan Midnight Maximum Tune 3 / 3DX / 3DX+ on Namco System N2.
+ *
+ * The cabinet is a driving one, but its panel does not match the Lindbergh
+ * driving profile: there is no boost button, and the card is handled by the
+ * reader on /dev/ttyM2 rather than a JVS switch, so Boost, BoostRight and
+ * CardInsert are left out instead of being advertised as bindable.  What it
+ * does have on top of wheel and pedals is a six-position shifter, reachable
+ * either sequentially through GearUp/GearDown or as the four raw shifter
+ * switches (Up/Down/Left/Right), plus the VIEW and BGM cabinet buttons.
+ *
+ * GearUp/GearDown stay on PLAYER_2 because fixPlayerForAction() forces them
+ * there for every game, and Up/Down/Left/Right stay on PLAYER_1 to match the
+ * JVS switches the N2 JAMMA translation reads.
+ */
+const ControlBinding gDefaultWmmtBindings[] = {
+    // Keyboard
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_LEFT, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Steer_Left, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_RIGHT, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Steer_Right, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_UP, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Gas_Digital, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_DOWN, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Brake_Digital, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_V, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_ViewChange, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_M, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_MusicChange, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_A, AXIS_MODE_DIGITAL, 0, false, PLAYER_2, LA_GearUp, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_Z, AXIS_MODE_DIGITAL, 0, false, PLAYER_2, LA_GearDown, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_I, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Up, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_K, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Down, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_J, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Left, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_L, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Right, -1, 0},
+
+    // Controller
+    {INPUT_TYPE_GAMEPAD_AXIS, 0, SDL_GAMEPAD_AXIS_LEFTX, AXIS_MODE_FULL, 0, false, PLAYER_1, LA_Steer, -1, 0},
+    {INPUT_TYPE_GAMEPAD_AXIS, 0, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, AXIS_MODE_FULL, 0, false, PLAYER_1, LA_Gas, -1, 0},
+    {INPUT_TYPE_GAMEPAD_AXIS, 0, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, AXIS_MODE_FULL, 0, false, PLAYER_1, LA_Brake, -1, 0},
+    {INPUT_TYPE_GAMEPAD_BUTTON, 0, SDL_GAMEPAD_BUTTON_NORTH, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_ViewChange, -1, 0},
+    {INPUT_TYPE_GAMEPAD_BUTTON, 0, SDL_GAMEPAD_BUTTON_WEST, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_MusicChange, -1, 0},
+    {INPUT_TYPE_GAMEPAD_BUTTON, 0, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, AXIS_MODE_DIGITAL, 0, false, PLAYER_2, LA_GearUp, -1, 0},
+    {INPUT_TYPE_GAMEPAD_BUTTON, 0, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, AXIS_MODE_DIGITAL, 0, false, PLAYER_2, LA_GearDown, -1, 0},
+    {INPUT_TYPE_GAMEPAD_BUTTON, 0, SDL_GAMEPAD_BUTTON_DPAD_UP, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Up, -1, 0},
+    {INPUT_TYPE_GAMEPAD_BUTTON, 0, SDL_GAMEPAD_BUTTON_DPAD_DOWN, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Down, -1, 0},
+    {INPUT_TYPE_GAMEPAD_BUTTON, 0, SDL_GAMEPAD_BUTTON_DPAD_LEFT, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Left, -1, 0},
+    {INPUT_TYPE_GAMEPAD_BUTTON, 0, SDL_GAMEPAD_BUTTON_DPAD_RIGHT, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Right, -1, 0},
+
+    // Joystick
+    {INPUT_TYPE_JOY_AXIS, 0, 0, AXIS_MODE_FULL, 0, false, PLAYER_1, LA_Steer, -1, 0},
+    {INPUT_TYPE_JOY_AXIS, 0, 5, AXIS_MODE_FULL, 0, false, PLAYER_1, LA_Gas, -1, 0},
+    {INPUT_TYPE_JOY_AXIS, 0, 2, AXIS_MODE_FULL, 0, false, PLAYER_1, LA_Brake, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 2, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_ViewChange, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 3, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_MusicChange, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 5, AXIS_MODE_DIGITAL, 0, false, PLAYER_2, LA_GearUp, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 4, AXIS_MODE_DIGITAL, 0, false, PLAYER_2, LA_GearDown, -1, 0},
+    {INPUT_TYPE_JOY_HAT, 0, 0, AXIS_MODE_DIGITAL, SDL_HAT_UP, false, PLAYER_1, LA_Up, -1, 0},
+    {INPUT_TYPE_JOY_HAT, 0, 0, AXIS_MODE_DIGITAL, SDL_HAT_DOWN, false, PLAYER_1, LA_Down, -1, 0},
+    {INPUT_TYPE_JOY_HAT, 0, 0, AXIS_MODE_DIGITAL, SDL_HAT_LEFT, false, PLAYER_1, LA_Left, -1, 0},
+    {INPUT_TYPE_JOY_HAT, 0, 0, AXIS_MODE_DIGITAL, SDL_HAT_RIGHT, false, PLAYER_1, LA_Right, -1, 0},
+};
+
+const size_t gDefaultWmmtBindingsSize = sizeof(gDefaultWmmtBindings) / sizeof(gDefaultWmmtBindings[0]);
+
 const ControlBinding gDefaultFlyingBindings[] = {
     // Keyboard
     {INPUT_TYPE_KEY, 0, SDL_SCANCODE_LEFT, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Flying_Left, -1, 0},
@@ -412,6 +471,7 @@ int createDefaultControlsIni(const char *fileName)
     addBindingsToIni(ini, "Common", gDefaultCommonBindings, gDefaultCommonBindingsSize);
     addBindingsToIni(ini, "Digital", gDefaultDigitalBindings, gDefaultDigitalBindingsSize);
     addBindingsToIni(ini, "Driving", gDefaultDrivingBindings, gDefaultDrivingBindingsSize);
+    addBindingsToIni(ini, "WMMT", gDefaultWmmtBindings, gDefaultWmmtBindingsSize);
     addBindingsToIni(ini, "Flying", gDefaultFlyingBindings, gDefaultFlyingBindingsSize);
     addBindingsToIni(ini, "Shooting", gDefaultShootingBindings, gDefaultShootingBindingsSize);
     addBindingsToIni(ini, "Mahjong", gDefaultMahjongBindings, gDefaultMahjongBindingsSize);

@@ -70,6 +70,7 @@ namespace LibcBridge
     FILE *bridgePopen(const char *command, const char *type);
     int bridgePclose(FILE *stream);
     void bridgePerror(const char *s);
+    char *bridgeStrerrorR(int errorNumber, char *buffer, size_t length);
 
 
     // Time interceptions
@@ -92,6 +93,25 @@ namespace LibcBridge
     int bridgeGetpagesize();
     void *bridgeMmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
     int bridgeMunmap(void *addr, size_t length);
+    void bridgeBzero(void *destination, size_t length);
+    void *bridgeSbrk(intptr_t increment);
+    int bridgePipe(int descriptors[2]);
+    int bridgeSetjmp(void *environment);
+    int bridgeSigsetjmp(void *environment, int saveSignalMask);
+    void bridgeLongjmp(void *environment, int value);
+    int bridgeIsalnum(int character);
+    int bridgeIsalpha(int character);
+    int bridgeIscntrl(int character);
+    int bridgeIsdigit(int character);
+    int bridgeIsgraph(int character);
+    int bridgeIslower(int character);
+    int bridgeIsprint(int character);
+    int bridgeIspunct(int character);
+    int bridgeIsspace(int character);
+    int bridgeIsupper(int character);
+    int bridgeIsxdigit(int character);
+    int bridgeTolower(int character);
+    int bridgeToupper(int character);
 
     int bridgeCxaAtexit(void (*func)(void *), void *arg, void *dso_handle);
     int bridgeCxaThreadAtexitImpl(void (*func)(void *), void *arg, void *dso_handle);
@@ -149,6 +169,8 @@ namespace LibcBridge
     void (*bridgeSignal(int signum, void (*handler)(int)))(int);
     int bridgeSigfillset(void *set);
     int bridgeSigemptyset(void *set);
+    int bridgeSigaddset(void *set, int signum);
+    int bridgeSigprocmask(int how, const void *set, void *oldset);
     int bridgeSigaction(int signum, const struct linux_sigaction *act, struct linux_sigaction *oldact);
 
     // Wide char memory and string functions

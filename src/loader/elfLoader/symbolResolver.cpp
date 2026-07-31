@@ -342,6 +342,36 @@ void SymbolResolver::RegisterNativeSymbol(const std::string &symbolName, void *s
     }
 }
 
+size_t SymbolResolver::PatchNativeJumpStubs(const std::string &prefix, void *(*resolver)(const char *))
+{
+    if (!resolver)
+        return 0;
+
+    size_t patched = 0;
+    for (const auto &entry : m_NativeSymbols)
+    {
+        if (entry.first.rfind(prefix, 0) != 0 || !entry.second)
+            continue;
+
+        void *target = resolver(entry.first.c_str());
+        if (!target || target == entry.second)
+            continue;
+
+        uint8_t jump[7] = {0xB8, 0, 0, 0, 0, 0xFF, 0xE0};
+        *reinterpret_cast<uint32_t *>(jump + 1) = reinterpret_cast<uint32_t>(target);
+
+        DWORD oldProtection = 0;
+        if (!VirtualProtect(entry.second, sizeof(jump), PAGE_EXECUTE_READWRITE, &oldProtection))
+            continue;
+        memcpy(entry.second, jump, sizeof(jump));
+        FlushInstructionCache(GetCurrentProcess(), entry.second, sizeof(jump));
+        DWORD ignored = 0;
+        VirtualProtect(entry.second, sizeof(jump), oldProtection, &ignored);
+        ++patched;
+    }
+    return patched;
+}
+
 extern "C" void HandleUnresolvedSymbol(const char *symbolName, void *callerAddress)
 {
     printf("\n*** FATAL ERROR ***\nUnresolved symbol called: %s\nCaller Address: %p\n*******************\n", symbolName, callerAddress);

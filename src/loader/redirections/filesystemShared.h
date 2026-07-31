@@ -6,6 +6,7 @@
 #include <winsock2.h>
 #endif
 #include <dirent.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/stat.h>
 typedef enum
@@ -32,11 +33,15 @@ typedef enum
     ROUTE = 9
 } FileTypes;
 
+extern FILE *fileHooks[10];
+extern FileTypes fileRead[10];
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 void ConvertPath(char *dst, const char *src, size_t size);
+const char *redirectTempPath(const char *path);
 DIR *sharedOpendir(const char *dirname);
 int sharedRemove(const char *path);
 int sharedMkdir(const char *path, mode_t mode);
@@ -54,6 +59,8 @@ ssize_t sharedRead(int fd, void *buf, size_t count);
 size_t sharedFread(void *buf, size_t size, size_t count, FILE *stream);
 long int sharedFtell(FILE *stream);
 int sharedFseek(FILE *stream, long int offset, int whence);
+int64_t sharedFtello64(FILE *stream);
+int sharedFseeko64(FILE *stream, int64_t offset, int whence);
 void sharedRewind(FILE *stream);
 int sharedIoctl(int fd, unsigned long int request, ...);
 int sharedSelect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);

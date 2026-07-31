@@ -2,11 +2,14 @@
 #include "../redirections/filesystemShared.h"
 #include "filesystemBridge.hpp"
 #include "libcBridge.hpp"
+#include "networkBridge.hpp"
 #include "symbolResolver.hpp"
+#include "../hardware/namco/n2/n2CardReader.h"
 #include "../log/log.h"
 #include <string>
 #include <windows.h>
 #include <io.h>
+#include <conio.h>
 #include <direct.h>
 #include <cstdarg>
 #include "../config/config.h"
@@ -19,6 +22,67 @@ static char g_dlErrorBuf[256];
 
 namespace FileSystemBridge
 {
+    static int bridgeOpenDescriptor(const char *path, int flags, ...)
+    {
+        if (getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2)
+        {
+            // /dev/ttyM2 is owned by the card reader bridge; a failure here
+            // means YaCardEmu is not reachable, not that the host should be
+            // asked for a file by that name.
+            int descriptor = n2CardReaderOpen(path, flags);
+            if (descriptor >= 0 || (path && strcmp(path, "/dev/ttyM2") == 0))
+                return descriptor;
+        }
+
+        int mode = 0;
+        if (flags & 0x40) // Linux O_CREAT
+        {
+            va_list arguments;
+            va_start(arguments, flags);
+            mode = va_arg(arguments, int);
+            va_end(arguments);
+        }
+        return sharedOpen(path, flags, mode);
+    }
+
+    static ssize_t bridgeReadDescriptor(int fd, void *buffer, size_t count)
+    {
+        if (n2CardReaderIsDescriptor(fd))
+            return n2CardReaderRead(fd, buffer, count);
+        if (NetworkBridge::isSocketDescriptor(fd))
+            return NetworkBridge::bridgeSocketRead(fd, buffer, count);
+        return sharedRead(fd, buffer, count);
+    }
+
+    static ssize_t bridgeWriteDescriptor(int fd, const void *buffer, size_t count)
+    {
+        if (n2CardReaderIsDescriptor(fd))
+            return n2CardReaderWrite(fd, buffer, count);
+        if (NetworkBridge::isSocketDescriptor(fd))
+            return NetworkBridge::bridgeSocketWrite(fd, buffer, count);
+        return sharedWrite(fd, buffer, count);
+    }
+
+    static int bridgeCloseDescriptor(int fd)
+    {
+        if (n2CardReaderIsDescriptor(fd))
+            return n2CardReaderClose(fd);
+        if (NetworkBridge::isSocketDescriptor(fd))
+            return NetworkBridge::bridgeSocketClose(fd);
+        return sharedClose(fd);
+    }
+
+    static int bridgeIoctlDescriptor(int fd, unsigned long request, ...)
+    {
+        va_list arguments;
+        va_start(arguments, request);
+        void *argument = va_arg(arguments, void *);
+        va_end(arguments);
+
+        if (n2CardReaderIsDescriptor(fd))
+            return n2CardReaderIoctl(fd, request, argument);
+        return sharedIoctl(fd, request, argument);
+    }
 
     void initBridges()
     {
@@ -36,6 +100,7 @@ namespace FileSystemBridge
         MAP("feof", bridgeFeof);
         MAP("fgets", sharedFgets);
         MAP("fgetc", bridgeFgetc);
+        MAP("_IO_getc", bridgeFgetc);
         MAP("fflush", fflush);
         MAP("fputs", bridgeFputs);
         MAP("fputc", bridgeFputc);
@@ -46,21 +111,21 @@ namespace FileSystemBridge
 
         // LFS (Large File Support) functions
         MAP("fopen64", sharedFopen);
-        MAP("fseeko64", sharedFseek);
-        MAP("lseek64", _lseeki64);
-        MAP("ftello64", sharedFtell);
+        MAP("fseeko64", sharedFseeko64);
+        MAP("lseek64", bridgeLseek64);
+        MAP("ftello64", sharedFtello64);
 
         MAP("fileno", bridgeFileno);
         MAP("_fileno", bridgeFileno);
 
         // POSIX low-level I/O functions
-        MAP("read", sharedRead);
-        MAP("write", sharedWrite);
-        MAP("__write", sharedWrite);
-        MAP("close", sharedClose);
+        MAP("read", bridgeReadDescriptor);
+        MAP("write", bridgeWriteDescriptor);
+        MAP("__write", bridgeWriteDescriptor);
+        MAP("close", bridgeCloseDescriptor);
         MAP("lseek", bridgeLseek);
-        MAP("open", sharedOpen);
-        MAP("open64", sharedOpen);
+        MAP("open", bridgeOpenDescriptor);
+        MAP("open64", bridgeOpenDescriptor);
         MAP("readlink", bridgeReadlink);
         MAP("fdopen", bridgeFdopen);
         MAP("setvbuf", bridgeSetvbuf);
@@ -77,7 +142,7 @@ namespace FileSystemBridge
         MAP("chdir", bridgeChdir);
 
 
-        MAP("ioctl", sharedIoctl);
+        MAP("ioctl", bridgeIoctlDescriptor);
         MAP("select", sharedSelect);
         MAP("creat", bridgeCreat);
         MAP("mkdir", sharedMkdir);
@@ -118,12 +183,23 @@ namespace FileSystemBridge
     int bridgeFeof(FILE *stream)
     {
         log_trace("Intercepted feof: %p", stream);
+        if (stream == fileHooks[CPUINFO])
+            return fileRead[CPUINFO] >= 4;
         return feof(stream);
     }
 
     int bridgeFgetc(FILE *stream)
     {
         log_trace("Intercepted fgetc: %p", stream);
+        /*
+         * Intrinsic Alchemy configures stdin with O_NONBLOCK and polls it once
+         * per frame.  The Windows CRT ignores the Linux fcntl flags used by the
+         * game, so a normal fgetc(stdin) would block the N2 main/render loop.
+         * SDL remains the primary keyboard/JVS path; this preserves the legacy
+         * terminal path without ever waiting for console input.
+         */
+        if (getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2 && stream == stdin)
+            return _kbhit() ? _getch() : EOF;
         return fgetc(stream);
     }
 
@@ -137,6 +213,11 @@ namespace FileSystemBridge
     {
         log_trace("Intercepted lseek: %d %ld %d", fd, offset, whence);
         return lseek(fd, offset, whence);
+    }
+
+    long long bridgeLseek64(int fd, long long offset, int whence)
+    {
+        return _lseeki64(fd, offset, whence);
     }
 
     int bridgeReadlink(const char *path, char *buf, size_t bufsiz)
@@ -235,29 +316,32 @@ namespace FileSystemBridge
         }
         if (mode == 1)
             mode = 0;
-        return _access(pathname, mode);
+
+        char winPath[MAX_PATH];
+        ConvertPath(winPath, redirectTempPath(pathname), MAX_PATH);
+        return _access(winPath, mode);
     }
 
     int bridgeChdir(const char *path)
     {
         char winPath[MAX_PATH];
-        ConvertPath(winPath, path, MAX_PATH);
+        ConvertPath(winPath, redirectTempPath(path), MAX_PATH);
+        if (getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2)
+            log_warn("Namco N2: chdir %s (as %s)", path, winPath);
         log_debug("chdir: %s (as %s)", path, winPath);
         return _chdir(winPath);
     }
 
     int bridgeChmod(const char *filename, int pmode)
     {
-        return _chmod(filename, pmode);
+        char winPath[MAX_PATH];
+        ConvertPath(winPath, redirectTempPath(filename), MAX_PATH);
+        return _chmod(winPath, pmode);
     }
 
     int bridgeCreat(const char *pathname, int mode)
     {
-        if (strncmp(pathname, "/tmp", 4) == 0)
-            pathname += 1;
-
-        if (strncmp(pathname, "/var/tmp", 8) == 0)
-            pathname += 5;
+        pathname = redirectTempPath(pathname);
 
         char winPath[MAX_PATH];
         ConvertPath(winPath, pathname, MAX_PATH);
@@ -295,17 +379,12 @@ extern "C"
             return 0;
             
         char winPath[MAX_PATH];
-        ConvertPath(winPath, name, MAX_PATH);
+        ConvertPath(winPath, redirectTempPath(name), MAX_PATH);
 
         if (strcmp(winPath, "\\home\\disk1\\rankingdata") == 0 &&
             (getConfig()->gameGroup == GROUP_OUTRUN || getConfig()->gameGroup == GROUP_OUTRUN_TEST))
         {
             strcpy(winPath, ".\\rankingdata");
-        }
-
-        if(strcmp(winPath, "\\tmp\\") == 0)
-        {
-            strcpy(winPath, ".\\tmp\\");
         }
 
         std::string searchPath = winPath;
@@ -393,21 +472,33 @@ extern "C"
 
     int bridgeUnlink(const char *pathname)
     {
-        if (strncmp(pathname, "/tmp", 4) == 0)
-        {
-            pathname += 1;
-        }
-        return _unlink(pathname);
+        pathname = redirectTempPath(pathname);
+
+        char winPath[MAX_PATH];
+        ConvertPath(winPath, pathname, MAX_PATH);
+        return _unlink(winPath);
     }
 
     int bridgeRename(const char *oldpath, const char *newpath)
     {
-        log_debug("rename(\" % s\", \" % s\")", oldpath, newpath);
+        log_debug("rename(\"%s\", \"%s\")", oldpath, newpath);
+
         char winOld[MAX_PATH];
         char winNew[MAX_PATH];
-        ConvertPath(winOld, oldpath, MAX_PATH);
-        ConvertPath(winNew, newpath, MAX_PATH);
-        return rename(winOld, winNew);
+        ConvertPath(winOld, redirectTempPath(oldpath), MAX_PATH);
+        ConvertPath(winNew, redirectTempPath(newpath), MAX_PATH);
+
+        /*
+         * POSIX rename() replaces an existing destination atomically, while the
+         * CRT's rename() fails with EEXIST.  Games rely on the POSIX behaviour
+         * for save-to-temp-then-swap writes.
+         */
+        if (!MoveFileExA(winOld, winNew, MOVEFILE_REPLACE_EXISTING))
+        {
+            log_warn("rename(\"%s\", \"%s\") failed (Win32 error %lu)", winOld, winNew, GetLastError());
+            return -1;
+        }
+        return 0;
     }
 
     static void CopyStatVer3(const struct _stat64 &src, void *dst_ptr)
@@ -475,11 +566,7 @@ extern "C"
 
     static int myStatImpl(const char *path, void *buf, bool use_stat64)
     {
-        if (strncmp(path, "/tmp", 4) == 0)
-            path += 1;
-
-        if (strncmp(path, "/var/tmp", 8) == 0)
-            path += 5;
+        path = redirectTempPath(path);
 
         if (path && (strstr(path, "/dev/") != NULL || strstr(path, "i2c/") != NULL || strstr(path, "ttyS") != NULL))
         {

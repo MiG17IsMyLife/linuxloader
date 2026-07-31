@@ -218,6 +218,10 @@ typedef enum
     JVS_STATUS_ERROR_UNSUPPORTED_COMMAND,
 } JVSStatus;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int initJVS();
 
 JVSStatus processPacket(int* packetSize);
@@ -239,3 +243,7 @@ JVSIO* getJVSIO();
 int setSwitch(JVSPlayer player, JVSInput switchNumber, int value);
 int incrementCoin(JVSPlayer player, int amount);
 int setAnalogue(JVSInput channel, int value);
+
+#ifdef __cplusplus
+}
+#endif

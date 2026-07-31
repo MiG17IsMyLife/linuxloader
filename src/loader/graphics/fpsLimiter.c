@@ -1,6 +1,11 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#if defined(_WIN32) || defined(__MINGW32__)
+#include <windows.h>
+#include <mmsystem.h>
+#endif
+
 #include "../config/config.h"
 #include "../graphics/fpsLimiter.h"
 
@@ -13,6 +18,15 @@ void initFpsLimiter()
 {
     if (getConfig()->fpsLimiter == 1)
     {
+#if defined(_WIN32) || defined(__MINGW32__)
+        /*
+         * Windows schedules sleeps on the system timer, which ticks every
+         * ~15.6ms by default - coarser than a whole frame at 60Hz, so the
+         * limiter would routinely overshoot by more than it meant to sleep.
+         * Ask for 1ms so usleep() can actually pace frames.
+         */
+        timeBeginPeriod(1);
+#endif
         fpsLimit.targetFrameTime = 1000000 / getConfig()->fpsTarget;
         fpsLimit.frameEnd = clockNow();
     }

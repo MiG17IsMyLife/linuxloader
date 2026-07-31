@@ -27,10 +27,14 @@
 #include "init.h"
 #include "patching/patch.h"
 #include "input/sdlInput.h"
+#include "hardware/namco/n2/n2.h"
+#include "config/config.h"
 #include "mainShared.h"
 
 std::string g_absoluteElfPath;
 uint32_t partialElfCrc = 0;
+static char g_n2ConfigPath[MAX_PATH_LENGTH] = "";
+static char g_n2ControlsPath[MAX_PATH_LENGTH] = "";
 
 extern SDLControllers sdlJoysticks;
 
@@ -87,6 +91,13 @@ int main(int argc, char *argv[], char *envp[])
     if (parseArgs(argc, argv, command, originalDir, gameELF, libraryPath) != PARSE_ARGS_SUCCESS)
         return EXIT_SUCCESS;
 
+    if (configPath)
+        strncpy(g_n2ConfigPath, configPath, sizeof(g_n2ConfigPath) - 1);
+    if (controlsPath)
+        strncpy(g_n2ControlsPath, controlsPath, sizeof(g_n2ControlsPath) - 1);
+    const bool hasConfigPath = configPath && configPath[0] != '\0';
+    const bool hasControlsPath = controlsPath && controlsPath[0] != '\0';
+
     char elfPath[MAX_PATH_LENGTH];
     char elfArgs[MAX_PATH_LENGTH] = "";
 
@@ -123,19 +134,35 @@ int main(int argc, char *argv[], char *envp[])
 
     log_info("Loading ELF file: %s\n", elfPath);
     ElfLoader loader;
+    bool initializedBeforeElfConstructors = false;
 
-    if (!loader.Load(elfPath))
+    if (!loader.Load(elfPath, [&]() {
+            if (!n2DetectGame())
+                return true;
+
+            uint8_t *baseAddr = (uint8_t *)loader.GetBaseAddress();
+            if (baseAddr)
+                partialElfCrc = getCrc32Mem(baseAddr + 10, 0x4000);
+            initMain(hasConfigPath ? g_n2ConfigPath : (char *)"",
+                     hasControlsPath ? g_n2ControlsPath : (char *)"");
+            initializedBeforeElfConstructors = true;
+            return true;
+        }))
     {
         log_fatal("Failed to load ELF file: %s", elfPath);
         return 1;
     }
 
     uint8_t *baseAddr = (uint8_t *)loader.GetBaseAddress();
-    if (baseAddr)
+    if (baseAddr && !initializedBeforeElfConstructors)
         partialElfCrc = getCrc32Mem(baseAddr + 10, 0x4000);
 
-    log_debug("Initializing main...");
-    initMain(configPath, controlsPath);
+    if (!initializedBeforeElfConstructors)
+    {
+        log_debug("Initializing main...");
+        initMain(hasConfigPath ? g_n2ConfigPath : (char *)"",
+                 hasControlsPath ? g_n2ControlsPath : (char *)"");
+    }
 
     int final_argc = 0;
     char *final_argv_arr[10];
@@ -151,6 +178,34 @@ int main(int argc, char *argv[], char *envp[])
             token = strtok(NULL, " ");
         }
     }
+    /*
+     * WMMT3 derives its development flag straight from the argument count:
+     *
+     *     main():  gDebug = (argc == 1);  seqMain(gDebug)
+     *
+     * A cabinet starts the game from .execrc as "./main 1", so argc is 2 and
+     * the flag stays clear.  Launching the ELF bare puts it in development
+     * mode, which swaps the test menu for the one carrying デバッグ and
+     * テストプレイ and makes main() shell out to "perl prepend-n2.pl".
+     * Reproduce the cabinet's command line unless the user asked for the
+     * development mode through [NamcoN2] DEBUG_MODE, or passed their own
+     * arguments.
+     */
+    if (getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2 && final_argc == 1)
+    {
+        if (getConfig()->n2DebugMode)
+        {
+            log_warn("Namco N2: [NamcoN2] DEBUG_MODE is on; starting the ELF without arguments "
+                     "so the game runs in its development mode");
+        }
+        else
+        {
+            static char n2CabinetArg[] = "1";
+            final_argv_arr[final_argc++] = n2CabinetArg;
+            log_info("Namco N2: starting the ELF as \"main 1\" to match the cabinet's .execrc");
+        }
+    }
+
     final_argv_arr[final_argc] = NULL;
 
     if (!loader.Execute(final_argc, final_argv_arr, envp))

@@ -154,6 +154,7 @@ namespace FileSystemBridge
 
     int bridgeFileno(FILE *stream);
     long int bridgeLseek(int fd, long int offset, int whence);
+    long long bridgeLseek64(int fd, long long offset, int whence);
     int bridgeReadlink(const char *path, char *buf, size_t bufsiz);
     FILE* bridgeFdopen(int fd, const char* mode);
     int bridgeSetvbuf(FILE *stream, char *buf, int mode, size_t size);

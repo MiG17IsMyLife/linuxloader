@@ -43,6 +43,7 @@ class SymbolResolver
 
     // Register a symbol exported by a dynamically loaded Linux ELF
     void RegisterNativeSymbol(const std::string &symbolName, void *symbolPtr);
+    size_t PatchNativeJumpStubs(const std::string &prefix, void *(*resolver)(const char *));
 
     // Global relocation and initialization passes
     bool ProcessAllRelocations();

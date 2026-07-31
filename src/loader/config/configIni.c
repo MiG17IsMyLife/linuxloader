@@ -20,6 +20,26 @@ int createDefaultIni(const char *filePath)
     fprintf(file, "# Linux Loader Configuration File\n");
     fprintf(file, "# By the Linux Loader Development Team 2026\n\n");
 
+    fprintf(file, "[NamcoN2]\n");
+    fprintf(file, "# WMMT3DX+ cabinets carry two dongles; both serial numbers are shown on\n");
+    fprintf(file, "# the attract screen. 12 decimal digits each, read from your own dongles.\n");
+    fprintf(file, "DONGLE_ID = \"%s\"\n", defaults.n2DongleId);
+    fprintf(file, "DONGLE_ID_2 = \"%s\"\n", defaults.n2DongleId2);
+    fprintf(file, "# Start the game the way its developers did instead of the way a cabinet\n");
+    fprintf(file, "# does. Adds DEBUG and TEST PLAY to the test menu, and changes the version\n");
+    fprintf(file, "# screen, the notice screen, pad input and the card write paths.\n");
+    fprintf(file, "DEBUG_MODE = %s\n", defaults.n2DebugMode ? "true" : "false");
+    fprintf(file, "# FFB output is disabled until an output backend is configured\n");
+    fprintf(file, "FFB_ENABLED = %s\n", defaults.n2ForceFeedbackEnabled ? "true" : "false");
+    fprintf(file, "# Connect /dev/ttyM2 to an external YaCardEmu process.\n");
+    fprintf(file, "# The card reader check reports E51 whenever YaCardEmu is not reachable,\n");
+    fprintf(file, "# so disabling this makes the cabinet fail that check on purpose.\n");
+    fprintf(file, "YACARDEMU_ENABLED = %s\n", defaults.n2YaCardEmuEnabled ? "true" : "false");
+    fprintf(file, "# Optionally launch the external executable; it is never embedded in linuxloader\n");
+    fprintf(file, "YACARDEMU_AUTOSTART = %s\n", defaults.n2YaCardEmuAutoStart ? "true" : "false");
+    fprintf(file, "YACARDEMU_PATH = \"%s\"\n", defaults.n2YaCardEmuPath);
+    fprintf(file, "YACARDEMU_PIPE = \"%s\"\n\n", defaults.n2YaCardEmuPipe);
+
     // [Display]
     fprintf(file, "[Display]\n");
     fprintf(file, "# Set the width resolution here\nWIDTH = AUTO\n\n");

@@ -2,6 +2,7 @@
 
 #include <string>
 #include <cstdint>
+#include <functional>
 
 // Forward declarations to avoid exposing ELFIO directly in headers if possible,
 // but since we'll likely use it heavily, including ELFIO might be easier.
@@ -24,6 +25,7 @@ class ElfLoader
 
     // Loads the ELF file into memory and resolves dependencies
     bool Load(const std::string &path);
+    bool Load(const std::string &path, const std::function<bool()> &beforeInitializers);
 
     // Executes the loaded ELF file
     bool Execute(int argc, char **argv, char **envp);

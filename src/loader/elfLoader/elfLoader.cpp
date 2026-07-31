@@ -171,6 +171,11 @@ void ElfLoader::PreReserveAddressSpace(const std::string &path)
 
 bool ElfLoader::Load(const std::string &path)
 {
+    return Load(path, {});
+}
+
+bool ElfLoader::Load(const std::string &path, const std::function<bool()> &beforeInitializers)
+{
     if (m_IsSharedObject)
         return LoadMapAndExport(path);
     if (!LoadMapAndExport(path))
@@ -182,6 +187,9 @@ bool ElfLoader::Load(const std::string &path)
     if (!ProcessRelocations())
         return false;
     SymbolResolver::GetInstance().PatchAllSOs();
+
+    if (beforeInitializers && !beforeInitializers())
+        return false;
 
     if (!SymbolResolver::GetInstance().RunAllInits())
         return false;
@@ -391,6 +399,8 @@ bool ElfLoader::LoadDependencies()
         SymbolResolver::GetInstance().RegisterLibrary("libm.so.6", "INTERNAL");
         SymbolResolver::GetInstance().RegisterLibrary("libdl.so", "INTERNAL");
         SymbolResolver::GetInstance().RegisterLibrary("libdl.so.2", "INTERNAL");
+        SymbolResolver::GetInstance().RegisterLibrary("librt.so", "INTERNAL");
+        SymbolResolver::GetInstance().RegisterLibrary("librt.so.1", "INTERNAL");
         SymbolResolver::GetInstance().RegisterLibrary("libimf.so", "INTERNAL");
         SymbolResolver::GetInstance().RegisterLibrary("libirc.so", "INTERNAL");
         SymbolResolver::GetInstance().RegisterLibrary("libsvml.so", "INTERNAL");

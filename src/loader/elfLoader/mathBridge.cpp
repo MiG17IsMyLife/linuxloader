@@ -55,8 +55,80 @@ namespace MathBridge
         MAP("finite", bridge_finite);
         MAP("frexp", bridge_frexp);
         MAP("frexpf", bridge_frexpf);
+
+        /*
+         * GCC normally expands these inline on x86, so a game only emits a
+         * real call for the odd spot the optimizer left alone. WMMT3 does that
+         * for fabsf and ldexp, and libCg.so imports the glibc-internal
+         * __isnanf/__isinff aliases, so the whole C99 set is bridged here
+         * rather than one symbol at a time.
+         */
+        MAP("fabs", bridge_fabs);
+        MAP("fabsf", bridge_fabsf);
+        MAP("ceil", bridge_ceil);
+        MAP("ceilf", bridge_ceilf);
+        MAP("floor", bridge_floor);
+        MAP("floorf", bridge_floorf);
+        MAP("round", bridge_round);
+        MAP("roundf", bridge_roundf);
+        MAP("trunc", bridge_trunc);
+        MAP("truncf", bridge_truncf);
+        MAP("rint", bridge_rint);
+        MAP("rintf", bridge_rintf);
+        MAP("nearbyint", bridge_nearbyint);
+        MAP("nearbyintf", bridge_nearbyintf);
+        MAP("lrint", bridge_lrint);
+        MAP("lround", bridge_lround);
+        MAP("ldexp", bridge_ldexp);
+        MAP("ldexpf", bridge_ldexpf);
+        MAP("scalbn", bridge_ldexp);
+        MAP("scalbnf", bridge_ldexpf);
+        MAP("cbrt", bridge_cbrt);
+        MAP("cbrtf", bridge_cbrtf);
+        MAP("exp2", bridge_exp2);
+        MAP("exp2f", bridge_exp2f);
+        MAP("log2f", bridge_log2f);
+        MAP("log1p", bridge_log1p);
+        MAP("log1pf", bridge_log1pf);
+        MAP("expm1", bridge_expm1);
+        MAP("expm1f", bridge_expm1f);
+        MAP("asinh", bridge_asinh);
+        MAP("asinhf", bridge_asinhf);
+        MAP("acosh", bridge_acosh);
+        MAP("acoshf", bridge_acoshf);
+        MAP("atanh", bridge_atanh);
+        MAP("atanhf", bridge_atanhf);
+        MAP("copysign", bridge_copysign);
+        MAP("copysignf", bridge_copysignf);
+        MAP("fmax", bridge_fmax);
+        MAP("fmaxf", bridge_fmaxf);
+        MAP("fmin", bridge_fmin);
+        MAP("fminf", bridge_fminf);
+        MAP("fdim", bridge_fdim);
+        MAP("fdimf", bridge_fdimf);
+        MAP("fma", bridge_fma);
+        MAP("fmaf", bridge_fmaf);
+        MAP("remainder", bridge_remainder);
+        MAP("remainderf", bridge_remainderf);
+        MAP("drem", bridge_remainder);
+        MAP("dremf", bridge_remainderf);
+        MAP("nextafter", bridge_nextafter);
+        MAP("nextafterf", bridge_nextafterf);
+
+        // glibc exports the classification helpers under these internal names.
+        MAP("__isnan", bridge_isnand);
+        MAP("__isnanf", bridge_isnanf);
+        MAP("isnanf", bridge_isnanf);
+        MAP("__isinf", bridge_isinfd);
+        MAP("__isinff", bridge_isinff);
+        MAP("isinff", bridge_isinff);
+        MAP("__finite", bridge_finite);
+        MAP("__finitef", bridge_finitef);
+        MAP("__signbit", bridge_signbitd);
+        MAP("__signbitf", bridge_signbitf);
+        MAP("signbit", bridge_signbitd);
     }
-}   
+}
 
 extern "C" double bridge_log(double x)
 {
@@ -221,6 +293,219 @@ extern "C" double bridge_frexp(double x, int *exp)
 extern "C" float bridge_frexpf(float x, int *exp)
 {
     return ::frexpf(x, exp);
+}
+extern "C" double bridge_fabs(double x)
+{
+    return ::fabs(x);
+}
+extern "C" float bridge_fabsf(float x)
+{
+    return ::fabsf(x);
+}
+extern "C" double bridge_ceil(double x)
+{
+    return ::ceil(x);
+}
+extern "C" float bridge_ceilf(float x)
+{
+    return ::ceilf(x);
+}
+extern "C" double bridge_floor(double x)
+{
+    return ::floor(x);
+}
+extern "C" float bridge_floorf(float x)
+{
+    return ::floorf(x);
+}
+extern "C" double bridge_round(double x)
+{
+    return ::round(x);
+}
+extern "C" float bridge_roundf(float x)
+{
+    return ::roundf(x);
+}
+extern "C" double bridge_trunc(double x)
+{
+    return ::trunc(x);
+}
+extern "C" float bridge_truncf(float x)
+{
+    return ::truncf(x);
+}
+extern "C" double bridge_rint(double x)
+{
+    return ::rint(x);
+}
+extern "C" float bridge_rintf(float x)
+{
+    return ::rintf(x);
+}
+extern "C" double bridge_nearbyint(double x)
+{
+    return ::nearbyint(x);
+}
+extern "C" float bridge_nearbyintf(float x)
+{
+    return ::nearbyintf(x);
+}
+extern "C" long bridge_lrint(double x)
+{
+    return ::lrint(x);
+}
+extern "C" long bridge_lround(double x)
+{
+    return ::lround(x);
+}
+extern "C" double bridge_ldexp(double x, int exponent)
+{
+    return ::ldexp(x, exponent);
+}
+extern "C" float bridge_ldexpf(float x, int exponent)
+{
+    return ::ldexpf(x, exponent);
+}
+extern "C" double bridge_cbrt(double x)
+{
+    return ::cbrt(x);
+}
+extern "C" float bridge_cbrtf(float x)
+{
+    return ::cbrtf(x);
+}
+extern "C" double bridge_exp2(double x)
+{
+    return ::exp2(x);
+}
+extern "C" float bridge_exp2f(float x)
+{
+    return ::exp2f(x);
+}
+extern "C" float bridge_log2f(float x)
+{
+    return ::log2f(x);
+}
+extern "C" double bridge_log1p(double x)
+{
+    return ::log1p(x);
+}
+extern "C" float bridge_log1pf(float x)
+{
+    return ::log1pf(x);
+}
+extern "C" double bridge_expm1(double x)
+{
+    return ::expm1(x);
+}
+extern "C" float bridge_expm1f(float x)
+{
+    return ::expm1f(x);
+}
+extern "C" double bridge_asinh(double x)
+{
+    return ::asinh(x);
+}
+extern "C" float bridge_asinhf(float x)
+{
+    return ::asinhf(x);
+}
+extern "C" double bridge_acosh(double x)
+{
+    return ::acosh(x);
+}
+extern "C" float bridge_acoshf(float x)
+{
+    return ::acoshf(x);
+}
+extern "C" double bridge_atanh(double x)
+{
+    return ::atanh(x);
+}
+extern "C" float bridge_atanhf(float x)
+{
+    return ::atanhf(x);
+}
+extern "C" double bridge_copysign(double x, double y)
+{
+    return ::copysign(x, y);
+}
+extern "C" float bridge_copysignf(float x, float y)
+{
+    return ::copysignf(x, y);
+}
+extern "C" double bridge_fmax(double x, double y)
+{
+    return ::fmax(x, y);
+}
+extern "C" float bridge_fmaxf(float x, float y)
+{
+    return ::fmaxf(x, y);
+}
+extern "C" double bridge_fmin(double x, double y)
+{
+    return ::fmin(x, y);
+}
+extern "C" float bridge_fminf(float x, float y)
+{
+    return ::fminf(x, y);
+}
+extern "C" double bridge_fdim(double x, double y)
+{
+    return ::fdim(x, y);
+}
+extern "C" float bridge_fdimf(float x, float y)
+{
+    return ::fdimf(x, y);
+}
+extern "C" double bridge_fma(double x, double y, double z)
+{
+    return ::fma(x, y, z);
+}
+extern "C" float bridge_fmaf(float x, float y, float z)
+{
+    return ::fmaf(x, y, z);
+}
+extern "C" double bridge_remainder(double x, double y)
+{
+    return ::remainder(x, y);
+}
+extern "C" float bridge_remainderf(float x, float y)
+{
+    return ::remainderf(x, y);
+}
+extern "C" double bridge_nextafter(double x, double y)
+{
+    return ::nextafter(x, y);
+}
+extern "C" float bridge_nextafterf(float x, float y)
+{
+    return ::nextafterf(x, y);
+}
+extern "C" int bridge_isnand(double x)
+{
+    return std::isnan(x) ? 1 : 0;
+}
+extern "C" int bridge_isnanf(float x)
+{
+    return std::isnan(x) ? 1 : 0;
+}
+extern "C" int bridge_isinfd(double x)
+{
+    // glibc's __isinf returns the sign of the infinity, not just a flag.
+    return std::isinf(x) ? (x > 0 ? 1 : -1) : 0;
+}
+extern "C" int bridge_isinff(float x)
+{
+    return std::isinf(x) ? (x > 0 ? 1 : -1) : 0;
+}
+extern "C" int bridge_signbitd(double x)
+{
+    return std::signbit(x) ? 1 : 0;
+}
+extern "C" int bridge_signbitf(float x)
+{
+    return std::signbit(x) ? 1 : 0;
 }
 
 #endif

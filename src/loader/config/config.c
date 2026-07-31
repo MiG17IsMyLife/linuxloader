@@ -9,6 +9,9 @@
 #include "../log/log.h"
 #include "iniParser.h"
 #include "../mainShared.h"
+#if defined(_WIN32) || defined(__MINGW32__)
+#include "../hardware/namco/n2/n2.h"
+#endif
 
 EmulatorConfig config = {0};
 
@@ -31,6 +34,27 @@ const char *GpuTypeStrings[] = {"Auto Detection", "NVIDIA", "AMD", "ATI", "INTEL
 
 static int detectGame(uint32_t elf_crc)
 {
+#if defined(_WIN32) || defined(__MINGW32__)
+    if (n2IsDetected())
+    {
+        config.platform = ARCADE_PLATFORM_NAMCO_N2;
+        config.gameTitle = (char *)n2GetGameTitle();
+        config.gameShortTitle = (char *)n2GetGameShortTitle();
+        config.gameDVP = (char *)"Namco System N2";
+        config.gameID = (char *)n2GetGameId();
+        config.gameReleaseYear = n2GetGame() == N2_GAME_WMMT3DX_PLUS ? (char *)"2010" : (char *)"";
+        config.gameNativeResolutions = (char *)"640x480";
+        config.gameStatus = WORKING;
+        config.jvsIOType = SEGA_TYPE_3;
+        config.gameType = DRIVING;
+        config.width = 640;
+        config.height = 480;
+        config.gameGroup = GROUP_WMMT3;
+        config.region = JP;
+        return 0;
+    }
+#endif
+
     const GameData *gameData = getGameData(elf_crc);
 
     if (gameData)
@@ -117,6 +141,17 @@ void toLowerCase(char *str)
 
 void setDefaultValues(EmulatorConfig *cfg)
 {
+    cfg->platform = ARCADE_PLATFORM_LINDBERGH;
+    strcpy(cfg->n2DongleId, "");
+    strcpy(cfg->n2DongleId2, "");
+    cfg->n2DebugMode = 0;
+    cfg->n2ForceFeedbackEnabled = 0;
+    // The cabinet reports E51 whenever the reader does not answer, so the
+    // loader tries the YaCardEmu pipe by default.
+    cfg->n2YaCardEmuEnabled = 1;
+    cfg->n2YaCardEmuAutoStart = 0;
+    strcpy(cfg->n2YaCardEmuPath, "");
+    strcpy(cfg->n2YaCardEmuPipe, "\\\\.\\pipe\\YACardEmu");
     cfg->emulateRideboard = 0;
     cfg->emulateDriveboard = 0;
     cfg->emulateMotionboard = 0;
@@ -309,6 +344,21 @@ static void getString(const IniConfig *ini, const char *section, const char *key
 
 void applyIniConfig(EmulatorConfig *config, const IniConfig *ini)
 {
+    // [NamcoN2]
+    getString(ini, "NamcoN2", "DONGLE_ID", config->n2DongleId, sizeof(config->n2DongleId));
+    getString(ini, "NamcoN2", "DONGLE_ID_2", config->n2DongleId2, sizeof(config->n2DongleId2));
+    config->n2DebugMode = getInt(ini, "NamcoN2", "DEBUG_MODE", config->n2DebugMode);
+    config->n2ForceFeedbackEnabled =
+        getInt(ini, "NamcoN2", "FFB_ENABLED", config->n2ForceFeedbackEnabled);
+    config->n2YaCardEmuEnabled =
+        getInt(ini, "NamcoN2", "YACARDEMU_ENABLED", config->n2YaCardEmuEnabled);
+    config->n2YaCardEmuAutoStart =
+        getInt(ini, "NamcoN2", "YACARDEMU_AUTOSTART", config->n2YaCardEmuAutoStart);
+    getString(ini, "NamcoN2", "YACARDEMU_PATH",
+              config->n2YaCardEmuPath, sizeof(config->n2YaCardEmuPath));
+    getString(ini, "NamcoN2", "YACARDEMU_PIPE",
+              config->n2YaCardEmuPipe, sizeof(config->n2YaCardEmuPipe));
+
     // [Display]
     config->width = getInt(ini, "Display", "WIDTH", config->width);
     config->height = getInt(ini, "Display", "HEIGHT", config->height);
@@ -509,7 +559,7 @@ int initConfig(const char *configFilePath)
 
     config.inputMode = 0;
 
-    char filePath[PATH_MAX];
+    char filePath[PATH_MAX] = "";
     if (configFilePath != NULL && configFilePath[0] != '\0')
     {
         strncpy(filePath, configFilePath, PATH_MAX - 1);

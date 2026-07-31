@@ -6,10 +6,16 @@
 #include "../log/log.h"
 #include "gccBridge.hpp"
 #include "symbolResolver.hpp"
+#include "../hardware/namco/n2/n2.h"
+#include "../config/config.h"
 #include <csignal>
+#include <cctype>
+#include <cmath>
 #include <cstdarg>
 #include <cstdio>
 #include <ctime>
+#include <fcntl.h>
+#include <io.h>
 #include <process.h>
 #include <sys/time.h>
 #include <sys/utime.h>
@@ -44,6 +50,11 @@ namespace LibcBridge
     FILE *native_stdout = stdout;
     FILE *native_stderr = stderr;
 
+    static double bridgeLog2(double value)
+    {
+        return std::log2(value);
+    }
+
     void initBridges()
     {
         log_info("Initializing Libc Bridges...");
@@ -61,6 +72,7 @@ namespace LibcBridge
         MAP("fscanf", bridgeFscanf);
         MAP("sscanf", bridgeSscanf);
         MAP("index", bridgeIndex);
+        MAP("strerror_r", bridgeStrerrorR);
 
         MAP("stdin", &native_stdin);
         MAP("stdout", &native_stdout);
@@ -160,6 +172,9 @@ namespace LibcBridge
         MAP("raise", bridgeRaise);
         MAP("sigfillset", bridgeSigfillset);
         MAP("sigemptyset", bridgeSigemptyset);
+        MAP("sigaddset", bridgeSigaddset);
+        MAP("sigprocmask", bridgeSigprocmask);
+        MAP("pthread_sigmask", bridgeSigprocmask);
         MAP("sigaction", bridgeSigaction);
         MAP("alarm", bridgeStubSuccess);
         MAP("qsort", qsort);
@@ -172,6 +187,7 @@ namespace LibcBridge
 
         MAP("isinf", bridgeIsinf);
         MAP("isnan", bridgeIsnan);
+        MAP("log2", bridgeLog2);
         MAP("wcscoll_l", bridgeWcscoll_l);
         MAP("wcsxfrm_l", bridgeWcsxfrm_l);
         MAP("towlower_l", bridgeTowlower_l);
@@ -181,11 +197,30 @@ namespace LibcBridge
         // Math
         MAP("atoi", atoi);
         MAP("atof", atof);
+        MAP("isalnum", bridgeIsalnum);
+        MAP("isalpha", bridgeIsalpha);
+        MAP("iscntrl", bridgeIscntrl);
+        MAP("isdigit", bridgeIsdigit);
+        MAP("isgraph", bridgeIsgraph);
+        MAP("islower", bridgeIslower);
+        MAP("isprint", bridgeIsprint);
+        MAP("ispunct", bridgeIspunct);
+        MAP("isspace", bridgeIsspace);
+        MAP("isupper", bridgeIsupper);
+        MAP("isxdigit", bridgeIsxdigit);
+        MAP("tolower", bridgeTolower);
+        MAP("toupper", bridgeToupper);
 
         // Memory
         MAP("getpagesize", bridgeGetpagesize);
         MAP("mmap", bridgeMmap);
         MAP("munmap", bridgeMunmap);
+        MAP("bzero", bridgeBzero);
+        MAP("sbrk", bridgeSbrk);
+        MAP("pipe", bridgePipe);
+        MAP("_setjmp", bridgeSetjmp);
+        MAP("__sigsetjmp", bridgeSigsetjmp);
+        MAP("longjmp", bridgeLongjmp);
 
         // Library handles
         MAP("dlopen", sharedDlopen);
@@ -234,6 +269,135 @@ namespace LibcBridge
         log_fatal("abort() called by ELF!");
         ::abort();
     }
+
+    void bridgeBzero(void *destination, size_t length)
+    {
+        memset(destination, 0, length);
+    }
+
+    void *bridgeSbrk(intptr_t increment)
+    {
+        // Alchemy's arena pools are backed by sbrk. N2 titles configure pools
+        // larger than 300 MB, so reserve a suitably sized 32-bit address range
+        // and commit it a page at a time as the program break grows.
+        constexpr size_t heapCapacity = 512 * 1024 * 1024;
+        static SRWLOCK heapLock = SRWLOCK_INIT;
+        static uint8_t *heapBase = nullptr;
+        static intptr_t heapOffset = 0;
+        static size_t committedSize = 0;
+
+        AcquireSRWLockExclusive(&heapLock);
+
+        if (!heapBase)
+            heapBase = static_cast<uint8_t *>(VirtualAlloc(nullptr, heapCapacity, MEM_RESERVE, PAGE_READWRITE));
+
+        if (!heapBase || increment < -heapOffset ||
+            increment > static_cast<intptr_t>(heapCapacity) - heapOffset)
+        {
+            log_error("sbrk: unable to move break by %ld bytes (used=%ld, capacity=%zu, base=%p)",
+                      static_cast<long>(increment), static_cast<long>(heapOffset),
+                      heapCapacity, heapBase);
+            ReleaseSRWLockExclusive(&heapLock);
+            return reinterpret_cast<void *>(-1);
+        }
+
+        const intptr_t newOffset = heapOffset + increment;
+        if (newOffset > static_cast<intptr_t>(committedSize))
+        {
+            SYSTEM_INFO systemInfo;
+            GetSystemInfo(&systemInfo);
+            const size_t pageSize = systemInfo.dwPageSize;
+            const size_t requiredSize =
+                (static_cast<size_t>(newOffset) + pageSize - 1) & ~(pageSize - 1);
+            const size_t commitSize = requiredSize - committedSize;
+
+            if (commitSize != 0 &&
+                !VirtualAlloc(heapBase + committedSize, commitSize, MEM_COMMIT, PAGE_READWRITE))
+            {
+                log_error("sbrk: VirtualAlloc commit failed (used=%ld, required=%zu, error=%lu)",
+                          static_cast<long>(heapOffset), requiredSize, GetLastError());
+                ReleaseSRWLockExclusive(&heapLock);
+                return reinterpret_cast<void *>(-1);
+            }
+
+            committedSize = requiredSize;
+        }
+
+        uint8_t *previousBreak = heapBase + heapOffset;
+        heapOffset = newOffset;
+        ReleaseSRWLockExclusive(&heapLock);
+        return previousBreak;
+    }
+
+    int bridgePipe(int descriptors[2])
+    {
+        return _pipe(descriptors, 4096, O_BINARY);
+    }
+
+    __attribute__((naked, returns_twice)) int bridgeSetjmp(void *)
+    {
+        __asm__ volatile(
+            "mov 4(%esp), %eax\n\t"
+            "mov %ebx, 0(%eax)\n\t"
+            "mov %esi, 4(%eax)\n\t"
+            "mov %edi, 8(%eax)\n\t"
+            "mov %ebp, 12(%eax)\n\t"
+            "lea 4(%esp), %edx\n\t"
+            "mov %edx, 16(%eax)\n\t"
+            "mov (%esp), %edx\n\t"
+            "mov %edx, 20(%eax)\n\t"
+            "xor %eax, %eax\n\t"
+            "ret\n\t");
+    }
+
+    __attribute__((naked, returns_twice)) int bridgeSigsetjmp(void *, int)
+    {
+        __asm__ volatile(
+            "mov 4(%esp), %eax\n\t"
+            "mov %ebx, 0(%eax)\n\t"
+            "mov %esi, 4(%eax)\n\t"
+            "mov %edi, 8(%eax)\n\t"
+            "mov %ebp, 12(%eax)\n\t"
+            "lea 4(%esp), %edx\n\t"
+            "mov %edx, 16(%eax)\n\t"
+            "mov (%esp), %edx\n\t"
+            "mov %edx, 20(%eax)\n\t"
+            "xor %eax, %eax\n\t"
+            "ret\n\t");
+    }
+
+    __attribute__((naked, noreturn)) void bridgeLongjmp(void *, int)
+    {
+        __asm__ volatile(
+            "mov 4(%esp), %eax\n\t"
+            "mov 8(%esp), %edx\n\t"
+            "test %edx, %edx\n\t"
+            "jnz 1f\n\t"
+            "inc %edx\n\t"
+            "1:\n\t"
+            "mov 20(%eax), %ecx\n\t"
+            "mov 0(%eax), %ebx\n\t"
+            "mov 4(%eax), %esi\n\t"
+            "mov 8(%eax), %edi\n\t"
+            "mov 12(%eax), %ebp\n\t"
+            "mov 16(%eax), %esp\n\t"
+            "mov %edx, %eax\n\t"
+            "jmp *%ecx\n\t");
+    }
+
+    int bridgeIsalnum(int character) { return isalnum(static_cast<unsigned char>(character)); }
+    int bridgeIsalpha(int character) { return isalpha(static_cast<unsigned char>(character)); }
+    int bridgeIscntrl(int character) { return iscntrl(static_cast<unsigned char>(character)); }
+    int bridgeIsdigit(int character) { return isdigit(static_cast<unsigned char>(character)); }
+    int bridgeIsgraph(int character) { return isgraph(static_cast<unsigned char>(character)); }
+    int bridgeIslower(int character) { return islower(static_cast<unsigned char>(character)); }
+    int bridgeIsprint(int character) { return isprint(static_cast<unsigned char>(character)); }
+    int bridgeIspunct(int character) { return ispunct(static_cast<unsigned char>(character)); }
+    int bridgeIsspace(int character) { return isspace(static_cast<unsigned char>(character)); }
+    int bridgeIsupper(int character) { return isupper(static_cast<unsigned char>(character)); }
+    int bridgeIsxdigit(int character) { return isxdigit(static_cast<unsigned char>(character)); }
+    int bridgeTolower(int character) { return tolower(static_cast<unsigned char>(character)); }
+    int bridgeToupper(int character) { return toupper(static_cast<unsigned char>(character)); }
 
     void bridgeExit(int status)
     {
@@ -606,10 +770,64 @@ namespace LibcBridge
         return strchr(str, c);
     }
 
+    /*
+     * A System N2 cabinet runs with TZ=UTC (set by .execrc) while its system
+     * clock holds the operator's local wall time, so gmtime() of that clock is
+     * what the game displays.  clDateTime::setLocalTime() relies on exactly
+     * that: it calls gettimeofday() and converts with gmtime_r(), never with
+     * localtime_r().  Handing it a true UTC epoch therefore puts the attract
+     * clock off by the host's UTC offset.
+     *
+     * The loader reproduces the cabinet convention instead of rewriting the
+     * conversion: the clock sources below report local wall time, and
+     * localtime() behaves as UTC so nothing applies the offset twice.  Keeping
+     * both halves consistent also means gmtime()/timegm() still round-trip.
+     */
+    long hostUtcOffsetSeconds()
+    {
+        static long cachedOffset = 0;
+        static DWORD nextRefresh = 0;
+
+        const DWORD now = GetTickCount();
+        if (nextRefresh == 0 || static_cast<LONG>(now - nextRefresh) >= 0)
+        {
+            const time_t utcNow = time(nullptr);
+            struct tm utcParts = {};
+            if (gmtime_s(&utcParts, &utcNow) == 0)
+            {
+                // Re-reading the UTC calendar time as a local one yields an
+                // instant shifted by the offset; tm_isdst = -1 lets the CRT
+                // resolve daylight saving for the current date.
+                utcParts.tm_isdst = -1;
+                const time_t utcReadAsLocal = mktime(&utcParts);
+                if (utcReadAsLocal != static_cast<time_t>(-1))
+                    cachedOffset = static_cast<long>(utcNow - utcReadAsLocal);
+            }
+            nextRefresh = now + 60000;
+        }
+        return cachedOffset;
+    }
+
+    static long cabinetClockOffset()
+    {
+        return getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2 ? hostUtcOffsetSeconds() : 0;
+    }
+
+    // Wall clock as microseconds since the Unix epoch, already carrying the
+    // cabinet offset so every clock source the game can read agrees.
+    static unsigned long long cabinetClockMicroseconds()
+    {
+        FILETIME ft;
+        GetSystemTimeAsFileTime(&ft);
+        unsigned long long ticks = (unsigned long long)ft.dwHighDateTime << 32 | ft.dwLowDateTime;
+        ticks -= 116444736000000000ULL; // 1601-01-01 to 1970-01-01, in 100ns units
+        return ticks / 10 + (unsigned long long)cabinetClockOffset() * 1000000ULL;
+    }
+
     int32_t bridgeTime(int32_t *tloc)
     {
         log_trace("Intercepted time");
-        time_t t = time(NULL);
+        time_t t = time(NULL) + cabinetClockOffset();
         if (tloc)
         {
             *tloc = (int32_t)t;
@@ -630,11 +848,7 @@ namespace LibcBridge
         log_trace("Intercepted gettimeofday");
         if (tv)
         {
-            FILETIME ft;
-            GetSystemTimeAsFileTime(&ft);
-            unsigned __int64 t = (unsigned __int64)ft.dwHighDateTime << 32 | ft.dwLowDateTime;
-            t -= 116444736000000000ULL;
-            t /= 10;
+            const unsigned long long t = cabinetClockMicroseconds();
             tv->tv_sec = (int32_t)(t / 1000000);
             tv->tv_usec = (int32_t)(t % 1000000);
         }
@@ -714,7 +928,8 @@ namespace LibcBridge
     {
         static tm32 t32;
         time_t t = (time_t)*timer;
-        struct tm *tm_ptr = localtime(&t);
+        // TZ=UTC on the cabinet, and the epoch already carries the offset.
+        struct tm *tm_ptr = getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2 ? gmtime(&t) : localtime(&t);
 
         if (tm_ptr)
         {
@@ -739,11 +954,7 @@ namespace LibcBridge
         log_trace("Intercepted clock_gettime");
         if (clk_id == CLOCK_REALTIME)
         {
-            FILETIME ft;
-            GetSystemTimeAsFileTime(&ft);
-            unsigned __int64 t = (unsigned __int64)ft.dwHighDateTime << 32 | ft.dwLowDateTime;
-            t -= 116444736000000000ULL;
-            t /= 10;
+            const unsigned long long t = cabinetClockMicroseconds();
             tp->tv_sec = (long)(t / 1000000);
             tp->tv_nsec = (long)(t % 1000000) * 1000;
             return 0;
@@ -805,6 +1016,12 @@ namespace LibcBridge
     int bridgeSystem(const char *command)
     {
         log_debug("system(\"%s\")", command);
+        int n2Result = n2HandleSystemCommand(command);
+        if (n2Result >= 0)
+            return n2Result;
+        if (n2IsDetected())
+            log_warn("Namco N2: passing unsupported system command to the host: %s", command ? command : "(null)");
+
         if (strcmp(command, "touch /var/tmp/mwlogo") == 0)
             command = "type nul > .\\tmp\\mwlogo";
 
@@ -977,14 +1194,54 @@ namespace LibcBridge
     int bridgeSigfillset(void *set)
     {
         log_debug("sigfillset() called");
-        memset(set, 0xFF, sizeof(uint32_t));
+        memset(set, 0xFF, 128);
         return 0;
     }
 
     int bridgeSigemptyset(void *set)
     {
         log_debug("sigemptyset() called");
-        memset(set, 0, sizeof(uint32_t));
+        memset(set, 0, 128);
+        return 0;
+    }
+
+    int bridgeSigaddset(void *set, int signum)
+    {
+        if (!set || signum < 1 || signum > 1024)
+            return -1;
+        uint32_t *words = static_cast<uint32_t *>(set);
+        const unsigned int bit = static_cast<unsigned int>(signum - 1);
+        words[bit / 32] |= 1U << (bit % 32);
+        return 0;
+    }
+
+    int bridgeSigprocmask(int how, const void *set, void *oldset)
+    {
+        static uint8_t currentMask[128] = {};
+        if (oldset)
+            memcpy(oldset, currentMask, sizeof(currentMask));
+        if (!set)
+            return 0;
+
+        const uint8_t *requested = static_cast<const uint8_t *>(set);
+        if (how == 0) // SIG_BLOCK
+        {
+            for (size_t i = 0; i < sizeof(currentMask); ++i)
+                currentMask[i] |= requested[i];
+        }
+        else if (how == 1) // SIG_UNBLOCK
+        {
+            for (size_t i = 0; i < sizeof(currentMask); ++i)
+                currentMask[i] &= static_cast<uint8_t>(~requested[i]);
+        }
+        else if (how == 2) // SIG_SETMASK
+        {
+            memcpy(currentMask, requested, sizeof(currentMask));
+        }
+        else
+        {
+            return -1;
+        }
         return 0;
     }
 
@@ -1518,6 +1775,18 @@ namespace LibcBridge
     void bridgePerror(const char *s)
     {
         log_info("Intercepted perror: %s", s);
+    }
+
+    char *bridgeStrerrorR(int errorNumber, char *buffer, size_t length)
+    {
+        const char *message = strerror(errorNumber);
+        if (!message)
+            message = "Unknown error";
+        if (!buffer || length == 0)
+            return const_cast<char *>(message);
+
+        snprintf(buffer, length, "%s", message);
+        return buffer;
     }
 
     char *bridgeRealpath(const char *path, char *resolved_path)

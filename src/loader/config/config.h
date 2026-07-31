@@ -128,6 +128,7 @@ typedef enum
 typedef enum
 {
     GROUP_UNKNOWN,
+    GROUP_WMMT3,
     GROUP_ABC,
     GROUP_HOD4,
     GROUP_HOD4_TEST,
@@ -146,6 +147,12 @@ typedef enum
     GROUP_VT3,
     GROUP_VT3_TEST
 } GameGroup;
+
+typedef enum
+{
+    ARCADE_PLATFORM_LINDBERGH,
+    ARCADE_PLATFORM_NAMCO_N2
+} ArcadePlatform;
 
 typedef enum
 {
@@ -253,6 +260,15 @@ typedef struct
 
 typedef struct
 {
+    ArcadePlatform platform;
+    char n2DongleId[13];
+    char n2DongleId2[13];
+    int n2DebugMode;
+    int n2ForceFeedbackEnabled;
+    int n2YaCardEmuEnabled;
+    int n2YaCardEmuAutoStart;
+    char n2YaCardEmuPath[MAX_PATH_LENGTH];
+    char n2YaCardEmuPipe[MAX_PATH_LENGTH];
     int emulateRideboard;
     int emulateDriveboard;
     int emulateMotionboard;

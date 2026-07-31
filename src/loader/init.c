@@ -18,6 +18,10 @@
 #include "../minhook/include/MinHook.h"
 #include "log/log.h"
 
+#if defined(_WIN32) || defined(__MINGW32__)
+#include "hardware/namco/n2/n2.h"
+#endif
+
 #if defined(__linux__)
 #include "input/evdevInput.h"
 #endif
@@ -78,6 +82,11 @@ void initMain(char *configPath, char *controlsPath)
         exit(1);
     log_info("Resolution patches initialized");
 
+#if defined(_WIN32) || defined(__MINGW32__)
+    if (getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2 && n2InstallHooks() != 0)
+        exit(1);
+#endif
+
     if (MH_EnableHook(MH_ALL_HOOKS) != MH_OK)
     {
         log_error("Failed to enable hooks");
@@ -88,21 +97,32 @@ void initMain(char *configPath, char *controlsPath)
         exit(1);
     log_info("SDL initialized");
 
-    if (initEeprom() != 0)
+#if defined(_WIN32) || defined(__MINGW32__)
+    if (getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2 && n2InitializeGraphics() != 0)
         exit(1);
-    log_info("EEPROM initialized");
+#endif
 
-    if (initBaseboard() != 0)
-        exit(1);
-    log_info("Baseboard initialized");
+    if (getConfig()->platform == ARCADE_PLATFORM_LINDBERGH)
+    {
+        if (initEeprom() != 0)
+            exit(1);
+        log_info("EEPROM initialized");
+
+        if (initBaseboard() != 0)
+            exit(1);
+        log_info("Baseboard initialized");
+    }
 
     if (initJVS() != 0)
         exit(1);
     log_info("JVS initialized");
 
-    if (initSecurityBoard() != 0)
-        exit(1);
-    log_info("Security board initialized");
+    if (getConfig()->platform == ARCADE_PLATFORM_LINDBERGH)
+    {
+        if (initSecurityBoard() != 0)
+            exit(1);
+        log_info("Security board initialized");
+    }
 
     if (getConfig()->emulateDriveboard)
     {
@@ -139,11 +159,15 @@ void initMain(char *configPath, char *controlsPath)
     if (getConfig()->inputMode == 2)
         sdlFfbInit();
 
-    securityBoardSetDipResolution(getConfig()->width, getConfig()->height);
-    log_info("Security board dip resolution set");
+    if (getConfig()->platform == ARCADE_PLATFORM_LINDBERGH)
+    {
+        securityBoardSetDipResolution(getConfig()->width, getConfig()->height);
+        log_info("Security board dip resolution set");
+    }
 
     printf("\nLinux Loader\nBy the Linux Loader Development Team 2026\n\n");
     printf("  GAME:        %s\n", getGameName());
+    printf("  PLATFORM:    %s\n", getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2 ? "Namco System N2" : "Sega Lindbergh");
     printf("  GAME ID:     %s\n", getGameId());
     printf("  DVP:         %s\n", getDvpName());
     printf("  GPU VENDOR:  %s\n", getConfig()->GPUVendorString);

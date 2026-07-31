@@ -70,6 +70,30 @@ extern char vf5StageNameAbbr[5];
 
 extern bool mj4ResponseReady;
 
+/*
+ * The games treat /tmp (and /var/tmp) as scratch storage that the cabinet
+ * mounts per boot; the loader serves it from a "tmp" directory next to the
+ * game instead.  sharedOpen() has always applied this redirect, so every other
+ * filesystem entry point has to agree - otherwise a file created through
+ * open() lands in ./tmp while fopen()/rename()/remove() look for it at the
+ * root of the current drive and silently fail.  That mismatch is why WMMT3
+ * could read /tmp/data/etc/testmode.lua but never replace it, losing every
+ * test-mode setting on exit.
+ */
+const char *redirectTempPath(const char *path)
+{
+    if (!path)
+        return path;
+
+    if (strncmp(path, "/var/tmp", 8) == 0)
+        return path + 5;
+
+    if (strncmp(path, "/tmp", 4) == 0)
+        return path + 1;
+
+    return path;
+}
+
 void ConvertPath(char *dst, const char *src, size_t size)
 {
     if (!src || !dst)
@@ -89,10 +113,7 @@ DIR *sharedOpendir(const char *dirname)
     log_debug("Opendir %s\n", dirname);
     DIR *(*_opendir)(const char *dirname) = REAL_FUNC(opendir);
 
-    if (strcmp(dirname, "/tmp/") == 0 && gGrp == GROUP_ID5)
-    {
-        return _opendir(dirname + 1);
-    }
+    dirname = redirectTempPath(dirname);
 
     if (strcmp(getConfig()->idCardFolder, "") != 0 && strcmp(dirname, ".") == 0)
     {
@@ -130,17 +151,13 @@ int sharedRemove(const char *path)
         return _remove(path);
     }
 
-    if (strncmp(path, "/tmp/", 5) == 0 && gGrp == GROUP_ID5)
-    {
-        path += 1;
+    path = redirectTempPath(path);
+
 #ifdef _WIN32
-        char winPath[256];
-        ConvertPath(winPath, path, 256);
-        path = winPath;
+    char winPath[MAX_PATH];
+    ConvertPath(winPath, path, MAX_PATH);
+    path = winPath;
 #endif
-        log_info("Removing: %s", path);
-        return _remove(path);
-    }
 
     log_debug("Removing: %s", path);
     return _remove(path);
@@ -152,10 +169,7 @@ int sharedMkdir(const char *path, mode_t mode)
     int (*_mkdir)(const char *path, mode_t mode) = dlsym(RTLD_NEXT, "mkdir");
 #endif
 
-    if (strncmp(path, "/tmp", 4) == 0)
-    {
-        path += 1;
-    }
+    path = redirectTempPath(path);
 
     if (strcmp(path, "/home/disk1/rankingdata") == 0 && (gGrp == GROUP_OUTRUN || gGrp == GROUP_OUTRUN_TEST))
     {
@@ -292,11 +306,7 @@ int sharedOpen(const char *pathname, int flags, ...)
         pathname = "./tmp/warning";
     }
 
-    if (strncmp(pathname, "/var/tmp", 8) == 0)
-        pathname += 5;
-
-    if (strncmp(pathname, "/tmp/", 5) == 0)
-        pathname += 1;
+    pathname = redirectTempPath(pathname);
 
     if (strcmp(pathname, "/proc/bus/pci/01/00.0") == 0)
     {
@@ -337,6 +347,20 @@ int sharedOpen64(const char *pathname, int flags, ...)
 FILE *sharedFopen(const char *restrict pathname, const char *restrict mode)
 {
     FILE *(*_fopen)(const char *restrict pathname, const char *restrict mode) = REAL_FUNC(fopen);
+
+#ifdef _WIN32
+    /*
+     * Linux does not distinguish text and binary streams.  Intrinsic Alchemy
+     * therefore opens binary .anm/.bin assets with mode "r".  The Windows CRT
+     * would treat 0x1a in those files as EOF and return a short read.
+     */
+    char binaryMode[16];
+    if (getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2 && mode && strchr(mode, 'b') == NULL)
+    {
+        snprintf(binaryMode, sizeof(binaryMode), "%sb", mode);
+        mode = binaryMode;
+    }
+#endif
 
     if (strcmp(pathname, "/proc/net/route") == 0)
     {
@@ -504,13 +528,7 @@ FILE *sharedFopen(const char *restrict pathname, const char *restrict mode)
         }
     }
 
-    if (strncmp(pathname, "/tmp/", 5) == 0 && gGrp == GROUP_ID5)
-    {
-        pathname += 1;
-    }
-
-    if (strncmp(pathname, "/var/tmp/seatini", 9) == 0)
-        pathname += 5;
+    pathname = redirectTempPath(pathname);
 
 #ifdef WIN32
     char winPath[MAX_PATH];
@@ -658,6 +676,8 @@ FILE *sharedFopen64(const char *pathname, const char *mode)
                 }
             }
     }
+
+    pathname = redirectTempPath(pathname);
 
     log_debug("fopen64: %s with mode %s", pathname, mode);
     return _fopen64(pathname, mode);
@@ -886,6 +906,33 @@ int sharedFseek(FILE *stream, long int offset, int whence)
     }
 
     return _fseek(stream, offset, whence);
+}
+
+int64_t sharedFtello64(FILE *stream)
+{
+    if (stream == fileHooks[FILE_RW1] || stream == fileHooks[FILE_RW2] ||
+        stream == fileHooks[FILE_FONT_ABC])
+        return (int64_t)sharedFtell(stream);
+
+#ifdef _WIN32
+    return _ftelli64(stream);
+#else
+    int64_t (*_ftello64)(FILE *stream) = REAL_FUNC(ftello64);
+    return _ftello64(stream);
+#endif
+}
+
+int sharedFseeko64(FILE *stream, int64_t offset, int whence)
+{
+    if (stream == fileHooks[FILE_FONT_ABC])
+        return sharedFseek(stream, (long int)offset, whence);
+
+#ifdef _WIN32
+    return _fseeki64(stream, offset, whence);
+#else
+    int (*_fseeko64)(FILE *stream, int64_t offset, int whence) = REAL_FUNC(fseeko64);
+    return _fseeko64(stream, offset, whence);
+#endif
 }
 
 void sharedRewind(FILE *stream)

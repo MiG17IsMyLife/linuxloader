@@ -213,6 +213,13 @@ struct tm *sharedLocaltime_R(const time_t *timep, struct tm *result)
     const int32_t *t32 = (const int32_t *)timep;
     time_t t = (time_t)*t32;
 
+    /*
+     * System N2 cabinets run with TZ=UTC and a system clock that already holds
+     * local wall time, so localtime() must not shift it a second time.
+     */
+    if (getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2)
+        return gmtime_s(result, &t) == 0 ? result : NULL;
+
     if (localtime_s(result, &t) == 0)
         return result;
     return NULL;

@@ -6,6 +6,15 @@
 #include "../patching/patchResolution.h"
 #include "../graphics/crossHair.h"
 
+static thread_local uint32_t lastCompressedImageSize = 0;
+static thread_local uint32_t pendingCompressedImageSize = 0;
+
+uint32_t GLHooks_ConsumeCompressedImageSize()
+{
+    const uint32_t size = pendingCompressedImageSize;
+    pendingCompressedImageSize = 0;
+    return size;
+}
 
 extern "C" void __attribute__((cdecl)) wrap_glBegin(GLenum mode)
 {
@@ -1083,6 +1092,8 @@ extern "C" void __attribute__((cdecl)) wrap_glGetTexLevelParameteriv(GLenum targ
 {
     if (glad_glGetTexLevelParameteriv)
         glad_glGetTexLevelParameteriv(target, level, pname, params);
+    if (pname == GL_TEXTURE_COMPRESSED_IMAGE_SIZE && params && *params > 0)
+        lastCompressedImageSize = static_cast<uint32_t>(*params);
 }
 
 extern "C" void __attribute__((cdecl)) wrap_glRasterPos2f(GLfloat x, GLfloat y)
@@ -1205,6 +1216,12 @@ extern "C" void __attribute__((cdecl)) wrap_glBufferSubDataARB(GLenum target, GL
 {
     if (glad_glBufferSubDataARB)
         glad_glBufferSubDataARB(target, offset, size, data);
+}
+
+extern "C" void __attribute__((cdecl)) wrap_glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const GLvoid *data)
+{
+    if (glad_glBufferSubData)
+        glad_glBufferSubData(target, offset, size, data);
 }
 
 extern "C" void __attribute__((cdecl)) wrap_glShaderSourceARB(GLhandleARB shader, GLsizei count, const GLcharARB **string,
@@ -1893,6 +1910,14 @@ extern "C" void __attribute__((cdecl)) wrap_glGetCompressedTexImage(GLenum targe
 {
     if (glad_glGetCompressedTexImage)
         glad_glGetCompressedTexImage(target, level, img);
+    pendingCompressedImageSize = lastCompressedImageSize;
+}
+
+extern "C" void __attribute__((cdecl)) wrap_glGetCompressedTexImageARB(GLenum target, GLint level, void *img)
+{
+    if (glad_glGetCompressedTexImageARB)
+        glad_glGetCompressedTexImageARB(target, level, img);
+    pendingCompressedImageSize = lastCompressedImageSize;
 }
 
 extern "C" void __attribute__((cdecl)) wrap_glGetQueryObjectuiv(GLuint id, GLenum pname, GLuint *params)
@@ -2088,6 +2113,8 @@ void *GLHooks_GetProcAddress(const char *procName)
         return (void *)&wrap_glBufferDataARB;
     if (strcmp(procName, "glBufferSubDataARB") == 0)
         return (void *)&wrap_glBufferSubDataARB;
+    if (strcmp(procName, "glBufferSubData") == 0)
+        return (void *)&wrap_glBufferSubData;
     if (strcmp(procName, "glCallList") == 0)
         return (void *)&wrap_glCallList;
     if (strcmp(procName, "glCheckFramebufferStatus") == 0)
@@ -2638,6 +2665,8 @@ void *GLHooks_GetProcAddress(const char *procName)
         return (void *)&wrap_glCompressedTexSubImage2D;
     if (strcmp(procName, "glGetCompressedTexImage") == 0)
         return (void *)&wrap_glGetCompressedTexImage;
+    if (strcmp(procName, "glGetCompressedTexImageARB") == 0)
+        return (void *)&wrap_glGetCompressedTexImageARB;
     if (strcmp(procName, "glGetQueryObjectuiv") == 0)
         return (void *)&wrap_glGetQueryObjectuiv;
     if (strcmp(procName, "glGetProgramEnvParameterfvARB") == 0)

@@ -120,6 +120,7 @@ elseif(WIN32 OR MINGW OR CMAKE_C_COMPILER MATCHES "mingw")
         src/loader/config/*.c
         src/loader/graphics/*.c
         src/loader/hardware/lindbergh/*.c
+        src/loader/hardware/namco/n2/*.cpp
         src/loader/input/*.c
         src/loader/log/*.c
         src/loader/patching/*.c

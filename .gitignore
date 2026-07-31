@@ -3,3 +3,4 @@ build-linux/
 build-win32/
 compile_commands.json
 
+build-core-mingw32/

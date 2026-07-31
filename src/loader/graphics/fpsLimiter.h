@@ -9,8 +9,16 @@ typedef struct
     long frameOverhead;   // Overhead time in the frame
 } FpsLimit;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void initFpsLimiter();
 long clockNow();
 void fpsLimiter(FpsLimit *stats);
 double calculateFps();
 void frameTiming();
+
+#ifdef __cplusplus
+}
+#endif
