@@ -152,17 +152,27 @@ elseif(WIN32 OR MINGW OR CMAKE_C_COMPILER MATCHES "mingw")
         -Wstrict-aliasing=0
     )
 
-    # Increase stack size to 4MB to prevent stack overflow on startup
+    # 4MB of stack, and the whole of it committed rather than grown on demand.
+    #
+    # The guest is GCC-compiled Linux code, where a stack grows on any access,
+    # so it carries no stack probes: functions open frames of tens of kilobytes
+    # in a single "sub esp". On Windows that steps straight over the one-page
+    # guard that would have grown the stack and faults with megabytes still
+    # reserved below. WMMT3 alone has a 36 KB frame in its card serialiser and a
+    # 35 KB one in its target-data loader. Committing the reservation up front
+    # removes the guard page from the picture for the main thread; guest threads
+    # get the same treatment from pthreadCreate().
+    # -Xlinker keeps "reserve,commit" as one argument; -Wl, would split it.
     target_link_options(${PROJECT_NAME} PRIVATE
         -s
-        -Wl,--stack,4194304
+        "SHELL:-Xlinker --stack -Xlinker 4194304,4194304"
         -Wl,--large-address-aware
     )
 
     target_link_directories(${PROJECT_NAME} PRIVATE "libs/win32")
 
     # Link dependencies
-    target_link_libraries(${PROJECT_NAME} minhook -static-libgcc -static-libstdc++ SDL3 SDL3_ttf SDL3_image FAudio gdi32 winmm ole32 ws2_32 xdiff opengl32 pthread psapi)
+    target_link_libraries(${PROJECT_NAME} minhook -static-libgcc -static-libstdc++ SDL3 SDL3_ttf SDL3_image FAudio gdi32 winmm ole32 ws2_32 xdiff opengl32 pthread psapi iphlpapi)
 
 else()
     message(WARNING "Unknown platform, doing nothing. Please use Linux or MinGW.")

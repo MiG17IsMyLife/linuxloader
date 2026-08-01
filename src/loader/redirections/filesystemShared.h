@@ -65,6 +65,14 @@ void sharedRewind(FILE *stream);
 int sharedIoctl(int fd, unsigned long int request, ...);
 int sharedSelect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);
 
+#if defined(_WIN32) || defined(__MINGW32__)
+/*
+ * Implemented by the network bridge.  The descriptor sets stay in the guest's
+ * i386 Linux layout, which is not Winsock's fd_set, so they cross as void *.
+ */
+int bridgeSelectDescriptors(int nfds, void *readSet, void *writeSet, void *exceptSet, void *timeout);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

@@ -31,6 +31,8 @@ struct DIR_Impl
 
 #endif
 
+#pragma pack(push, 4)
+
 struct linux_stat
 {
     unsigned long st_dev;
@@ -124,6 +126,15 @@ struct linux_stat64_safe
     uint32_t st_ctime_nsec;
     uint64_t st_ino;
 };
+
+#pragma pack(pop)
+
+// The sizes the guest's libc was built against; a mismatch here is a buffer
+// overrun into whatever the guest put next to its stat buffer.
+static_assert(sizeof(struct linux_stat) == 64, "i386 Linux old struct stat is 64 bytes");
+static_assert(sizeof(struct linux_stat64) == 96, "i386 Linux struct stat64 is 96 bytes");
+static_assert(sizeof(struct linux_stat_ver3) == 88, "i386 Linux struct stat (ver 3) is 88 bytes");
+static_assert(sizeof(struct linux_stat64_safe) == 96, "i386 Linux struct stat64 is 96 bytes");
 
 // =============================================================
 //   File Type Flags (st_mode)

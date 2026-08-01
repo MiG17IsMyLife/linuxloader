@@ -119,9 +119,18 @@ void PthreadMapper::Shutdown() {
 // ============================================================
 
 PthreadMutexInternal* PthreadMapper::GetOrCreateMutex(void* linux_mutex) {
-    AcquireSRWLockExclusive(&s_lock);
-    
+    AcquireSRWLockShared(&s_lock);
     auto it = s_mutex_map.find(linux_mutex);
+    if (it != s_mutex_map.end() && it->second->initialized == MUTEX_INIT_MAGIC) {
+        PthreadMutexInternal* existing = it->second;
+        ReleaseSRWLockShared(&s_lock);
+        return existing;
+    }
+    ReleaseSRWLockShared(&s_lock);
+
+    AcquireSRWLockExclusive(&s_lock);
+    // Another thread can create the same object between the two acquisitions.
+    it = s_mutex_map.find(linux_mutex);
     if (it != s_mutex_map.end() && it->second->initialized == MUTEX_INIT_MAGIC) {
         ReleaseSRWLockExclusive(&s_lock);
         return it->second;
@@ -175,9 +184,18 @@ void PthreadMapper::DestroyMutex(void* linux_mutex) {
 // ============================================================
 
 PthreadCondInternal* PthreadMapper::GetOrCreateCond(void* linux_cond) {
-    AcquireSRWLockExclusive(&s_lock);
-    
+    AcquireSRWLockShared(&s_lock);
     auto it = s_cond_map.find(linux_cond);
+    if (it != s_cond_map.end() && it->second->initialized == COND_INIT_MAGIC) {
+        PthreadCondInternal* existing = it->second;
+        ReleaseSRWLockShared(&s_lock);
+        return existing;
+    }
+    ReleaseSRWLockShared(&s_lock);
+
+    AcquireSRWLockExclusive(&s_lock);
+    // Another thread can create the same object between the two acquisitions.
+    it = s_cond_map.find(linux_cond);
     if (it != s_cond_map.end() && it->second->initialized == COND_INIT_MAGIC) {
         ReleaseSRWLockExclusive(&s_lock);
         return it->second;
@@ -227,9 +245,18 @@ void PthreadMapper::DestroyCond(void* linux_cond) {
 // ============================================================
 
 PthreadRwlockInternal* PthreadMapper::GetOrCreateRwlock(void* linux_rwlock) {
-    AcquireSRWLockExclusive(&s_lock);
-    
+    AcquireSRWLockShared(&s_lock);
     auto it = s_rwlock_map.find(linux_rwlock);
+    if (it != s_rwlock_map.end() && it->second->initialized == RWLOCK_INIT_MAGIC) {
+        PthreadRwlockInternal* existing = it->second;
+        ReleaseSRWLockShared(&s_lock);
+        return existing;
+    }
+    ReleaseSRWLockShared(&s_lock);
+
+    AcquireSRWLockExclusive(&s_lock);
+    // Another thread can create the same object between the two acquisitions.
+    it = s_rwlock_map.find(linux_rwlock);
     if (it != s_rwlock_map.end() && it->second->initialized == RWLOCK_INIT_MAGIC) {
         ReleaseSRWLockExclusive(&s_lock);
         return it->second;
@@ -278,9 +305,18 @@ void PthreadMapper::DestroyRwlock(void* linux_rwlock) {
 // ============================================================
 
 PthreadBarrierInternal* PthreadMapper::GetOrCreateBarrier(void* linux_barrier, unsigned int count) {
-    AcquireSRWLockExclusive(&s_lock);
-    
+    AcquireSRWLockShared(&s_lock);
     auto it = s_barrier_map.find(linux_barrier);
+    if (it != s_barrier_map.end() && it->second->initialized == BARRIER_INIT_MAGIC) {
+        PthreadBarrierInternal* existing = it->second;
+        ReleaseSRWLockShared(&s_lock);
+        return existing;
+    }
+    ReleaseSRWLockShared(&s_lock);
+
+    AcquireSRWLockExclusive(&s_lock);
+    // Another thread can create the same object between the two acquisitions.
+    it = s_barrier_map.find(linux_barrier);
     if (it != s_barrier_map.end() && it->second->initialized == BARRIER_INIT_MAGIC) {
         ReleaseSRWLockExclusive(&s_lock);
         return it->second;
@@ -334,9 +370,18 @@ void PthreadMapper::DestroyBarrier(void* linux_barrier) {
 // ============================================================
 
 PthreadSpinInternal* PthreadMapper::GetOrCreateSpin(void* linux_spin) {
-    AcquireSRWLockExclusive(&s_lock);
-    
+    AcquireSRWLockShared(&s_lock);
     auto it = s_spin_map.find(linux_spin);
+    if (it != s_spin_map.end() && it->second->initialized == SPIN_INIT_MAGIC) {
+        PthreadSpinInternal* existing = it->second;
+        ReleaseSRWLockShared(&s_lock);
+        return existing;
+    }
+    ReleaseSRWLockShared(&s_lock);
+
+    AcquireSRWLockExclusive(&s_lock);
+    // Another thread can create the same object between the two acquisitions.
+    it = s_spin_map.find(linux_spin);
     if (it != s_spin_map.end() && it->second->initialized == SPIN_INIT_MAGIC) {
         ReleaseSRWLockExclusive(&s_lock);
         return it->second;

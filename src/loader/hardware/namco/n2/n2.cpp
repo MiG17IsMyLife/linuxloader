@@ -1,6 +1,7 @@
 #include "n2.h"
 #include "n2Audio.h"
 #include "n2CardReader.h"
+#include "n2Host.h"
 #include "n2Hook.h"
 #include "n2SteeringIo.h"
 
@@ -21,6 +22,7 @@
 #include <SDL3/SDL.h>
 
 #include "../../../config/config.h"
+#include "../../../redirections/filesystemShared.h"
 #include "../../../elfLoader/symbolResolver.hpp"
 #include "../../../elfLoader/glHooks.hpp"
 #include "../../../graphics/fpsLimiter.h"
@@ -98,17 +100,6 @@ int returnHaspSuccess()
     return 0;
 }
 
-/*
- * clHasp::getCount() counts "Product=HASP" entries in /proc/bus/usb/devices,
- * which Windows does not have, so it always returned zero.  Both seqTitle()
- * and clSeqTitleThread::run() treat a zero count as "no dongle attached":
- * they clear the cached serial and never call getSerialHi/getSerialLo, and
- * the attract screen skips the S/N digits entirely when both halves are zero.
- *
- * A WMMT3DX+ cabinet ships with two dongles, and seqTitle() only reads the
- * clHasp2 serial when the count is greater than one - that is the second S/N
- * line on the attract screen.
- */
 int getN2HaspCount()
 {
     return 2;
@@ -575,26 +566,30 @@ int admSwapBuffers(AdmWindow *)
     if (getConfig()->fpsLimiter)
         frameTiming();
 
-    // Same readout the Lindbergh present path puts in the title bar.
-    static char windowTitle[128] = {};
-    std::snprintf(windowTitle, sizeof(windowTitle), "%s - FPS: %.2f",
-                  n2GetGameTitle(), calculateFps());
-    SDL_SetWindowTitle(window, windowTitle);
+    /*
+     * Same readout the Lindbergh present path puts in the title bar, but not on
+     * every present.  SDL_SetWindowTitle is a SetWindowText behind the scenes,
+     * which crosses into the window's message queue and blocks until the window
+     * procedure has handled it; doing that 60 times a second buys nothing a
+     * human can read.  Twice a second is still live and costs nothing.
+     */
+    // calculateFps() counts the frames it is called on, so it still runs every
+    // present; only the window text is rationed.
+    const double fps = calculateFps();
+    static int framesSinceTitle = 0;
+    if (++framesSinceTitle >= 30)
+    {
+        framesSinceTitle = 0;
+        char windowTitle[128] = {};
+        std::snprintf(windowTitle, sizeof(windowTitle), "%s - FPS: %.2f", n2GetGameTitle(), fps);
+        SDL_SetWindowTitle(window, windowTitle);
+    }
 
     return 1;
 }
 
 int admSwapInterval(int interval)
 {
-    /*
-     * alchemy.ini asks for VSYNC, which pins presentation to the panel's
-     * refresh.  A cabinet monitor runs at the 60Hz the game is written for, but
-     * on a desktop panel of any other rate the vblank cadence cannot express
-     * the requested frame time: at 75Hz the frames land on 13.3ms or 26.7ms and
-     * the software limiter can only average 60 by alternating between them,
-     * which is the 55-60 wobble.  When the limiter is doing the pacing it has
-     * to own it alone, so vsync is left off.
-     */
     if (getConfig()->fpsLimiter && interval != 0)
     {
         log_info("Namco N2: vsync suppressed; [Graphics] FPS_TARGET drives the frame rate");
@@ -690,9 +685,9 @@ void *n2ArenaMallocAligned(void *pool, uint32_t size, uint32_t alignment)
     if (!memory)
     {
         using PoolSizeFn = uint32_t (*)(void *);
-        PoolSizeFn getTotalArenaSize = reinterpret_cast<PoolSizeFn>(
+        static PoolSizeFn getTotalArenaSize = reinterpret_cast<PoolSizeFn>(
             n2ResolveSymbol("_ZNK3Gap4Core17igArenaMemoryPool17getTotalArenaSizeEv"));
-        PoolSizeFn getLargestAllocation = reinterpret_cast<PoolSizeFn>(
+        static PoolSizeFn getLargestAllocation = reinterpret_cast<PoolSizeFn>(
             n2ResolveSymbol("_ZNK3Gap4Core17igArenaMemoryPool33getLargestAvailableAllocationSizeEv"));
         const char *poolName = pool
             ? reinterpret_cast<const char *>(static_cast<uint8_t *>(pool) + 8)
@@ -710,12 +705,17 @@ void *getN2FallbackMemoryPool()
 {
     using PoolAdaptorFunction = void *(*)();
     using PoolAdaptorGet = void *(*)(void *);
-    PoolAdaptorFunction systemPoolFunction = reinterpret_cast<PoolAdaptorFunction>(
+
+    static PoolAdaptorFunction systemPoolFunction = reinterpret_cast<PoolAdaptorFunction>(
         n2ResolveSymbol("_ZN3Gap4Core27igMemoryPoolSystem_functionEv"));
-    PoolAdaptorGet getPool = reinterpret_cast<PoolAdaptorGet>(
+    static PoolAdaptorGet getPool = reinterpret_cast<PoolAdaptorGet>(
         n2ResolveSymbol("_ZNK3Gap4Core19igMemoryPoolAdaptorptEv"));
-    void *adaptor = systemPoolFunction ? systemPoolFunction() : nullptr;
-    return adaptor && getPool ? getPool(adaptor) : nullptr;
+
+    if (!systemPoolFunction || !getPool)
+        return nullptr;
+
+    void *adaptor = systemPoolFunction();
+    return adaptor ? getPool(adaptor) : nullptr;
 }
 
 void *n2InstantiateImage(void *pool)
@@ -1152,6 +1152,7 @@ extern "C" int n2HandleSystemCommand(const char *command)
     if (!n2IsDetected() || !command)
         return -1;
 
+
     if (std::strncmp(command, "find ", 5) == 0 && std::strstr(command, ">/tmp/find.txt"))
     {
         struct FindCommand
@@ -1186,7 +1187,7 @@ extern "C" int n2HandleSystemCommand(const char *command)
                 }
             }
             std::sort(matches.begin(), matches.end());
-            std::ofstream output("tmp/find.txt", std::ios::trunc);
+            std::ofstream output("tmp/find.txt", std::ios::trunc | std::ios::binary);
             for (const std::string &name : matches)
                 output << item.directory << "/" << name << "\n";
             return output ? 0 : 1;
@@ -1207,18 +1208,109 @@ extern "C" int n2HandleSystemCommand(const char *command)
         return 0;
     }
 
-    if (std::strcmp(command, "perl etc/ifconfig.pl > /tmp/ifconfig.txt") == 0)
+    if (std::strncmp(command, "perl etc/ifconfig.pl > ", 23) == 0)
     {
         std::error_code directoryError;
         std::filesystem::create_directories("tmp", directoryError);
-        std::ofstream output("tmp/ifconfig.txt", std::ios::trunc);
+
         /*
-         * Original script format: interface, IPv4, netmask, MAC, link.
-         * A deterministic loopback interface is suitable for one cabinet.
+         * etc/ifconfig.pl prints "$interface @address @mask @mac $link" - the
+         * interface number, then IPv4, netmask and MAC as individual decimal
+         * bytes, then the ethtool link flag.  Sixteen numbers in all.
          */
-        output << "0 127 0 0 1 255 0 0 0 0 0 0 0 0 0 1\n";
-        log_info("Namco N2: generated standalone network interface data");
+        int interfaceIndex = 0;
+        int link = 0;
+        unsigned char address[4] = {127, 0, 0, 1};
+        unsigned char mask[4] = {255, 0, 0, 0};
+        unsigned char mac[6] = {0, 0, 0, 0, 0, 0};
+
+        const bool haveAdapter =
+            n2HostNetworkInterface(&interfaceIndex, address, mask, mac, &link) != 0;
+
+        std::ofstream output(redirectTempPath(command + 23), std::ios::trunc | std::ios::binary);
+        output << interfaceIndex;
+        for (unsigned char value : address)
+            output << " " << static_cast<int>(value);
+        for (unsigned char value : mask)
+            output << " " << static_cast<int>(value);
+        for (unsigned char value : mac)
+            output << " " << static_cast<int>(value);
+        output << " " << link << "\n";
+
+        if (haveAdapter)
+            log_info("Namco N2: reported host interface %d.%d.%d.%d (MAC %02X:%02X:%02X:%02X:%02X:%02X)",
+                     address[0], address[1], address[2], address[3],
+                     mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        else
+            log_info("Namco N2: no usable host adapter; reported a loopback interface");
         return output ? 0 : 1;
+    }
+
+    if (std::strncmp(command, "sudo perl etc/usbsize.pl >", 26) == 0)
+    {
+        std::error_code directoryError;
+        std::filesystem::create_directories("tmp", directoryError);
+
+        /*
+         * etc/usbsize.pl prints the second column of "busybox df", i.e. the
+         * work disk's total size in 1K blocks.  The loader keeps that storage
+         * next to the game, so report the volume it actually lives on.
+         */
+        const unsigned long long kilobytes = n2HostWorkDiskKilobytes();
+        std::ofstream output(redirectTempPath(command + 26), std::ios::trunc | std::ios::binary);
+        output << kilobytes << "\n";
+        log_info("Namco N2: reported a work disk of %llu 1K blocks", kilobytes);
+        return output ? 0 : 1;
+    }
+
+    if (std::strncmp(command, "stty ", 5) == 0)
+    {
+        log_debug("Namco N2: ignoring a console setting (%s)", command);
+        return 0;
+    }
+
+    if (std::strncmp(command, "sudo ", 5) == 0)
+    {
+        const char *privileged = command + 5;
+
+        const char *clock = privileged;
+        if (std::strncmp(clock, "busybox ", 8) == 0)
+            clock += 8;
+        if (std::strncmp(clock, "date ", 5) == 0 || std::strncmp(clock, "hwclock", 7) == 0)
+        {
+            log_debug("Namco N2: ignoring the cabinet's clock update (%s)", command);
+            return 0;
+        }
+
+        if (std::strncmp(privileged, "ifconfig ", 9) == 0 ||
+            std::strncmp(privileged, "route ", 6) == 0)
+        {
+            log_info("Namco N2: leaving host networking untouched for: %s", command);
+            return 0;
+        }
+
+        if (std::strncmp(privileged, "mkdir -p ", 9) == 0)
+        {
+            std::error_code error;
+            std::filesystem::create_directories(redirectTempPath(privileged + 9), error);
+            return error ? 1 : 0;
+        }
+
+        if (std::strncmp(privileged, "mount ", 6) == 0)
+        {
+            log_info("Namco N2: no USB medium is emulated; refusing %s", command);
+            return 1;
+        }
+        if (std::strncmp(privileged, "umount ", 7) == 0)
+            return 0;
+        if (std::strncmp(privileged, "cp ", 3) == 0 || std::strncmp(privileged, "rm ", 3) == 0)
+        {
+            log_warn("Namco N2: refused a USB transfer with nothing mounted: %s", command);
+            return 1;
+        }
+
+        log_warn("Namco N2: ignoring an unhandled privileged command: %s", command);
+        return 1;
     }
 
     if (std::strncmp(command, "perl prepend-n2.pl", 18) != 0)
@@ -1226,6 +1318,8 @@ extern "C" int n2HandleSystemCommand(const char *command)
 
     const char *directories[] = {
         "tmp/data/target",
+        // prepend-n2.pl creates target/old alongside target itself.
+        "tmp/data/target/old",
         "tmp/data/tournament",
         "tmp/data/ranking",
         "tmp/data/maxicoin",

@@ -1084,8 +1084,14 @@ int sharedSelect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 
 #ifdef __linux__
     return _select(nfds, readfds, writefds, exceptfds, timeout);
+#else
+    /*
+     * Anything left is the guest waiting on its own descriptors - sockets, and
+     * the loopback pair that stands in for pipe().  Returning 0 here used to
+     * mean every reactor built on select() saw a permanent timeout.
+     */
+    return bridgeSelectDescriptors(nfds, readfds, writefds, exceptfds, timeout);
 #endif
-    return 0;
 }
 
 #ifdef __linux__

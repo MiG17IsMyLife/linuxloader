@@ -5,8 +5,10 @@
 #include "../redirections/libcShared.h"
 #include "../log/log.h"
 #include "gccBridge.hpp"
+#include "networkBridge.hpp"
 #include "symbolResolver.hpp"
 #include "../hardware/namco/n2/n2.h"
+#include "../hardware/namco/n2/n2CardReader.h"
 #include "../config/config.h"
 #include <csignal>
 #include <cctype>
@@ -277,10 +279,12 @@ namespace LibcBridge
 
     void *bridgeSbrk(intptr_t increment)
     {
-        // Alchemy's arena pools are backed by sbrk. N2 titles configure pools
-        // larger than 300 MB, so reserve a suitably sized 32-bit address range
-        // and commit it a page at a time as the program break grows.
-        constexpr size_t heapCapacity = 512 * 1024 * 1024;
+        static const size_t heapCandidates[] = {
+            1024ull * 1024 * 1024,
+            768ull * 1024 * 1024,
+            512ull * 1024 * 1024,
+        };
+        static size_t heapCapacity = 0;
         static SRWLOCK heapLock = SRWLOCK_INIT;
         static uint8_t *heapBase = nullptr;
         static intptr_t heapOffset = 0;
@@ -289,7 +293,18 @@ namespace LibcBridge
         AcquireSRWLockExclusive(&heapLock);
 
         if (!heapBase)
-            heapBase = static_cast<uint8_t *>(VirtualAlloc(nullptr, heapCapacity, MEM_RESERVE, PAGE_READWRITE));
+        {
+            for (size_t candidate : heapCandidates)
+            {
+                heapBase = static_cast<uint8_t *>(VirtualAlloc(nullptr, candidate, MEM_RESERVE, PAGE_READWRITE));
+                if (heapBase)
+                {
+                    heapCapacity = candidate;
+                    log_info("sbrk: reserved a %zu MB program break", candidate / (1024 * 1024));
+                    break;
+                }
+            }
+        }
 
         if (!heapBase || increment < -heapOffset ||
             increment > static_cast<intptr_t>(heapCapacity) - heapOffset)
@@ -331,7 +346,7 @@ namespace LibcBridge
 
     int bridgePipe(int descriptors[2])
     {
-        return _pipe(descriptors, 4096, O_BINARY);
+        return NetworkBridge::bridgeSocketPair(descriptors);
     }
 
     __attribute__((naked, returns_twice)) int bridgeSetjmp(void *)

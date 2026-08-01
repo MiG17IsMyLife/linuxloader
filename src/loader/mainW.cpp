@@ -79,7 +79,29 @@ void initBridges()
 
 int main(int argc, char *argv[], char *envp[])
 {
+    /*
+     * Warnings and above by default, but a crash usually needs the lines under
+     * that - which shared object landed at which address, which symbol was
+     * resolved where - and rebuilding to get them is a poor trade when the
+     * failure is hard to reproduce.  LL_LOG_LEVEL opens it up in place.
+     */
     logSetMinLevel(LOG_WARN);
+    if (const char *requested = std::getenv("LL_LOG_LEVEL"))
+    {
+        const struct { const char *name; int level; } levels[] = {
+            {"trace", LOG_TRACE}, {"debug", LOG_DEBUG}, {"game", LOG_GAME},
+            {"info", LOG_INFO}, {"warn", LOG_WARN}, {"error", LOG_ERROR},
+            {"fatal", LOG_FATAL},
+        };
+        for (const auto &entry : levels)
+        {
+            if (_stricmp(requested, entry.name) == 0)
+            {
+                logSetMinLevel(entry.level);
+                break;
+            }
+        }
+    }
 
     char command[MAX_PATH_LENGTH] = {0};
     char originalDir[MAX_PATH_LENGTH] = {0};

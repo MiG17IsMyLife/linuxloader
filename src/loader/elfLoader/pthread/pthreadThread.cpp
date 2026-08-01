@@ -179,16 +179,19 @@ int PthreadEmu::pthreadCreate(void* thread, const void* attr,
     }
     
     thread_info->detached = (detach_state == LINUX_PTHREAD_CREATE_DETACHED);
-    
+
+    constexpr size_t committedGuestStack = 4u << 20;
+    const size_t committedStack = stack_size > committedGuestStack ? stack_size : committedGuestStack;
+
     // Create the thread
     unsigned thread_id;
     HANDLE handle = (HANDLE)_beginthreadex(
-        NULL,                    // Security
-        (unsigned)stack_size,    // Stack size
-        ThreadEntryPoint,        // Entry point
-        ctx,                     // Argument
-        0,                       // Creation flags
-        &thread_id               // Thread ID
+        NULL,                        // Security
+        (unsigned)committedStack,    // Initially committed stack
+        ThreadEntryPoint,            // Entry point
+        ctx,                         // Argument
+        0,                           // Creation flags
+        &thread_id                   // Thread ID
     );
     
     if (!handle) {

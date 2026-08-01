@@ -81,6 +81,8 @@ namespace FileSystemBridge
 
         if (n2CardReaderIsDescriptor(fd))
             return n2CardReaderIoctl(fd, request, argument);
+        if (NetworkBridge::isSocketDescriptor(fd))
+            return NetworkBridge::bridgeSocketIoctl(fd, request, argument);
         return sharedIoctl(fd, request, argument);
     }
 

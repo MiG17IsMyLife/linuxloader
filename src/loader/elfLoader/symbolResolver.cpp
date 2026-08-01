@@ -205,6 +205,92 @@ void SymbolResolver::RegisterLibrary(const std::string &linuxName, const std::st
     log_info("Registered library substitution: %s -> %s", linuxName.c_str(), windowsName.c_str());
 }
 
+static std::string followTextSymlink(const std::string &path)
+{
+    static const char interixMagic[] = {'I', 'n', 't', 'x', 'L', 'N', 'K', '\1'};
+
+    std::string current = path;
+
+    for (int hop = 0; hop < 4; hop++)
+    {
+        std::ifstream file(current.c_str(), std::ios::binary);
+        if (!file)
+            break;
+
+        char buffer[261] = {};
+        file.read(buffer, sizeof(buffer) - 1);
+        const std::streamsize read = file.gcount();
+        file.close();
+
+        // A real shared object opens with the ELF magic and is far larger than
+        // any name could be.
+        if (read <= 0 || read >= static_cast<std::streamsize>(sizeof(buffer) - 1))
+            break;
+        if (read >= 4 && buffer[0] == 0x7F && buffer[1] == 'E' && buffer[2] == 'L' && buffer[3] == 'F')
+            break;
+
+        std::string target;
+        if (read > static_cast<std::streamsize>(sizeof(interixMagic)) &&
+            memcmp(buffer, interixMagic, sizeof(interixMagic)) == 0)
+        {
+            // UTF-16 with no terminator, filling the rest of the file.  Library
+            // names are ASCII, so anything with a high byte is not one.
+            bool decoded = true;
+            for (std::streamsize i = sizeof(interixMagic); i + 1 < read; i += 2)
+            {
+                if (buffer[i + 1] != 0)
+                {
+                    decoded = false;
+                    break;
+                }
+                target.push_back(buffer[i]);
+            }
+            if (!decoded)
+                break;
+        }
+        else
+        {
+            target.assign(buffer, static_cast<size_t>(read));
+        }
+
+        while (!target.empty() && (target.back() == '\n' || target.back() == '\r' || target.back() == '\0'))
+            target.pop_back();
+        if (target.empty())
+            break;
+
+        bool looksLikeName = true;
+        for (unsigned char character : target)
+        {
+            if (character < 0x20 || character > 0x7E)
+            {
+                looksLikeName = false;
+                break;
+            }
+        }
+        if (!looksLikeName)
+            break;
+
+        // A relative target is taken from the directory holding the link.
+        std::string resolved = target;
+        if (target[0] != '/' && target[0] != '\\' && target.find(':') == std::string::npos)
+        {
+            const size_t slash = current.find_last_of("\\/");
+            if (slash != std::string::npos)
+                resolved = current.substr(0, slash + 1) + target;
+        }
+
+        std::ifstream check(resolved.c_str(), std::ios::binary);
+        if (!check.good())
+            break;
+        check.close();
+
+        log_info("Following a symlink left as text by the dump: %s -> %s", current.c_str(), resolved.c_str());
+        current = resolved;
+    }
+
+    return current;
+}
+
 void SymbolResolver::LoadNeededLibrary(const std::string &linuxName)
 {
     std::string targetName = linuxName;
@@ -304,6 +390,8 @@ void SymbolResolver::LoadNeededLibrary(const std::string &linuxName)
 
     if (found)
     {
+        fullPath = followTextSymlink(fullPath);
+
         ElfLoader *soLoader = new ElfLoader();
         soLoader->SetIsSharedObject(true);
         if (soLoader->Load(fullPath))
@@ -388,42 +476,42 @@ extern "C" void HandleUnresolvedSymbol(const char *symbolName, void *callerAddre
 static void *CreateUnresolvedStub(const std::string &symbolName)
 {
     static uint8_t *currentBlock = nullptr;
+    static size_t blockSize = 0;
     static size_t offset = 0;
 
-    if (!currentBlock || offset + 18 > 4096)
+    /*
+     * A stub is nothing but the name it reports, so one per symbol is enough.
+     * Callers that resolve on a hot path - an image allocation asking for an
+     * Alchemy entry point its engine version does not have, say - would
+     * otherwise mint a fresh stub every time and never hand one back.
+     */
+    static std::unordered_map<std::string, void *> issued;
+    auto existing = issued.find(symbolName);
+    if (existing != issued.end())
+        return existing->second;
+
+    constexpr size_t stubBytes = 18;
+    constexpr size_t defaultBlockBytes = 4096;
+
+    const size_t nameBytes = symbolName.length() + 1;
+    const size_t needed = stubBytes + nameBytes;
+
+    if (!currentBlock || offset + needed > blockSize)
     {
-        currentBlock = reinterpret_cast<uint8_t *>(MemoryManager::GetInstance().AllocateExecutable(4096, nullptr));
+        blockSize = needed > defaultBlockBytes ? needed : defaultBlockBytes;
+        currentBlock = reinterpret_cast<uint8_t *>(MemoryManager::GetInstance().AllocateExecutable(blockSize, nullptr));
         offset = 0;
     }
 
     if (!currentBlock)
     {
+        blockSize = 0;
         return nullptr;
     }
 
     uint8_t *stub = currentBlock + offset;
-    offset += 18;
-
-    size_t nameLen = symbolName.length() + 1;
-    char *namePtr = nullptr;
-
-    if (offset + nameLen <= 4096)
-    {
-        namePtr = reinterpret_cast<char *>(currentBlock + offset);
-        offset += nameLen;
-    }
-    else
-    {
-        currentBlock = reinterpret_cast<uint8_t *>(MemoryManager::GetInstance().AllocateExecutable(4096, nullptr));
-        if (!currentBlock)
-        {
-            return nullptr;
-        }
-        stub = currentBlock + offset;
-        offset = 18;
-        namePtr = reinterpret_cast<char *>(currentBlock + offset);
-        offset += nameLen;
-    }
+    char *namePtr = reinterpret_cast<char *>(currentBlock + offset + stubBytes);
+    offset += needed;
 
     strcpy(namePtr, symbolName.c_str());
 
@@ -442,6 +530,7 @@ static void *CreateUnresolvedStub(const std::string &symbolName)
     stub[16] = 0x08;
     stub[17] = 0xC3;
 
+    issued[symbolName] = stub;
     return stub;
 }
 

@@ -59,6 +59,8 @@ namespace NetworkBridge
     extern "C" uint16_t bridgeHtons(uint16_t hostshort);
     extern "C" uint32_t bridgeNtohl(uint32_t netlong);
     extern "C" uint32_t bridgeHtonl(uint32_t hostlong);
+    extern "C" int bridgeSocketIoctl(int descriptor, unsigned long request, void *argument);
+    extern "C" int bridgeSocketPair(int descriptors[2]);
     bool isSocketDescriptor(int descriptor);
     int bridgeSocketRead(int descriptor, void *buffer, size_t length);
     int bridgeSocketWrite(int descriptor, const void *buffer, size_t length);
