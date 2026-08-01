@@ -266,41 +266,59 @@ typedef struct
 
 typedef struct
 {
-    ArcadePlatform platform;
-    char n2DongleId[13];
-    char n2DongleId2[13];
-    int n2DebugMode;
-    int n2ForceFeedbackEnabled;
+    int minimum;
+    int maximum;
+} NamcoN2AxisRange;
+
+typedef struct
+{
+    char name[128];
+    int players;
+    int switches;
+    int coins;
+    int analogueInputs;
+    int generalPurposeOutputs;
+    int analogueOutputs;
+    int generalPurposeInputs;
+} NamcoN2JvsConfig;
+
+typedef struct
+{
+    int enabled;
+    int autoStart;
+    char executablePath[MAX_PATH_LENGTH];
+    char pipeName[MAX_PATH_LENGTH];
+} NamcoN2CardConfig;
+
+typedef struct
+{
+    char dongleId[13];
+    char dongleId2[13];
+    int debugMode;
+    int forceFeedbackEnabled;
     /*
      * Raw counts the cabinet's potentiometers report at each end of their
      * travel. The test menu's steering initialisation screen shows these
      * divided by 64, so a wheel that reads +/-512 there swings the full 16 bit
      * range. The pedals rest at their minimum.
      */
-    int n2SteeringRawMin;
-    int n2SteeringRawMax;
-    int n2AcceleratorRawMin;
-    int n2AcceleratorRawMax;
-    int n2BrakeRawMin;
-    int n2BrakeRawMax;
+    NamcoN2AxisRange steering;
+    NamcoN2AxisRange accelerator;
+    NamcoN2AxisRange brake;
     /*
      * What the loader's JVS I/O board reports about itself. The counts are the
      * ones clSystemN2::initSystemN2() asks for; lowering one makes the game
      * claim fewer of that function, which is only useful for working out what
      * a cabinet actually needs.
      */
-    char n2JvsIoName[128];
-    int n2JvsPlayers;
-    int n2JvsSwitches;
-    int n2JvsCoins;
-    int n2JvsAnalogueIn;
-    int n2JvsGpo;
-    int n2JvsAnalogueOut;
-    int n2JvsGpi;
-    int n2YaCardEmuEnabled;
-    int n2YaCardEmuAutoStart;
-    char n2YaCardEmuPath[MAX_PATH_LENGTH];
-    char n2YaCardEmuPipe[MAX_PATH_LENGTH];
+    NamcoN2JvsConfig jvs;
+    NamcoN2CardConfig card;
+} NamcoN2Config;
+
+typedef struct
+{
+    ArcadePlatform platform;
+    NamcoN2Config namcoN2;
     int emulateRideboard;
     int emulateDriveboard;
     int emulateMotionboard;

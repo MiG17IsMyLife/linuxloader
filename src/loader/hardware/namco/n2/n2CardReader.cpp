@@ -60,11 +60,12 @@ bool connectFailureReported = false;
 bool launchYaCardEmu()
 {
     EmulatorConfig *config = getConfig();
-    if (!config->n2YaCardEmuAutoStart || !config->n2YaCardEmuPath[0] || launchAttempted)
+    if (!config->namcoN2.card.autoStart || !config->namcoN2.card.executablePath[0] ||
+        launchAttempted)
         return false;
 
     launchAttempted = true;
-    std::filesystem::path executable(config->n2YaCardEmuPath);
+    std::filesystem::path executable(config->namcoN2.card.executablePath);
     std::string commandLine = "\"" + executable.string() + "\"";
     std::vector<char> mutableCommand(commandLine.begin(), commandLine.end());
     mutableCommand.push_back('\0');
@@ -95,7 +96,7 @@ bool launchYaCardEmu()
 HANDLE openCardPipe()
 {
     EmulatorConfig *config = getConfig();
-    const char *pipeName = config->n2YaCardEmuPipe;
+    const char *pipeName = config->namcoN2.card.pipeName;
     if (!pipeName[0])
         return INVALID_HANDLE_VALUE;
 
@@ -239,7 +240,7 @@ void cardWorker()
     {
         if (pipe == INVALID_HANDLE_VALUE)
         {
-            if (!getConfig()->n2YaCardEmuEnabled)
+            if (!getConfig()->namcoN2.card.enabled)
             {
                 Sleep(200);
                 continue;

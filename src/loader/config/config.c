@@ -156,32 +156,32 @@ void toLowerCase(char *str)
 void setDefaultValues(EmulatorConfig *cfg)
 {
     cfg->platform = ARCADE_PLATFORM_LINDBERGH;
-    strcpy(cfg->n2DongleId, "");
-    strcpy(cfg->n2DongleId2, "");
-    cfg->n2DebugMode = 0;
-    cfg->n2ForceFeedbackEnabled = 0;
+    strcpy(cfg->namcoN2.dongleId, "");
+    strcpy(cfg->namcoN2.dongleId2, "");
+    cfg->namcoN2.debugMode = 0;
+    cfg->namcoN2.forceFeedbackEnabled = 0;
     // The wheel swings its whole electrical range; the pedals stay inside the
     // window clInputDeviceJamma calibrates them in.
-    cfg->n2SteeringRawMin = 0;
-    cfg->n2SteeringRawMax = 65535;
-    cfg->n2AcceleratorRawMin = 35000;
-    cfg->n2AcceleratorRawMax = 55480;
-    cfg->n2BrakeRawMin = 29000;
-    cfg->n2BrakeRawMax = 49480;
-    strcpy(cfg->n2JvsIoName, "namco ltd.;JYU-PCB;Ver1.00;JPN,Multipurpose");
-    cfg->n2JvsPlayers = 2;
-    cfg->n2JvsSwitches = 24;
-    cfg->n2JvsCoins = 2;
-    cfg->n2JvsAnalogueIn = 8;
-    cfg->n2JvsGpo = 6;
-    cfg->n2JvsAnalogueOut = 4;
-    cfg->n2JvsGpi = 16;
+    cfg->namcoN2.steering.minimum = 0;
+    cfg->namcoN2.steering.maximum = 65535;
+    cfg->namcoN2.accelerator.minimum = 35000;
+    cfg->namcoN2.accelerator.maximum = 55480;
+    cfg->namcoN2.brake.minimum = 29000;
+    cfg->namcoN2.brake.maximum = 49480;
+    strcpy(cfg->namcoN2.jvs.name, "namco ltd.;JYU-PCB;Ver1.00;JPN,Multipurpose");
+    cfg->namcoN2.jvs.players = 2;
+    cfg->namcoN2.jvs.switches = 24;
+    cfg->namcoN2.jvs.coins = 2;
+    cfg->namcoN2.jvs.analogueInputs = 8;
+    cfg->namcoN2.jvs.generalPurposeOutputs = 6;
+    cfg->namcoN2.jvs.analogueOutputs = 4;
+    cfg->namcoN2.jvs.generalPurposeInputs = 16;
     // The cabinet reports E51 whenever the reader does not answer, so the
     // loader tries the YaCardEmu pipe by default.
-    cfg->n2YaCardEmuEnabled = 1;
-    cfg->n2YaCardEmuAutoStart = 0;
-    strcpy(cfg->n2YaCardEmuPath, "");
-    strcpy(cfg->n2YaCardEmuPipe, "\\\\.\\pipe\\YACardEmu");
+    cfg->namcoN2.card.enabled = 1;
+    cfg->namcoN2.card.autoStart = 0;
+    strcpy(cfg->namcoN2.card.executablePath, "");
+    strcpy(cfg->namcoN2.card.pipeName, "\\\\.\\pipe\\YACardEmu");
     cfg->emulateRideboard = 0;
     cfg->emulateDriveboard = 0;
     cfg->emulateMotionboard = 0;
@@ -375,40 +375,54 @@ static void getString(const IniConfig *ini, const char *section, const char *key
 void applyIniConfig(EmulatorConfig *config, const IniConfig *ini)
 {
     // [NamcoN2]
-    getString(ini, "NamcoN2", "DONGLE_ID", config->n2DongleId, sizeof(config->n2DongleId));
-    getString(ini, "NamcoN2", "DONGLE_ID_2", config->n2DongleId2, sizeof(config->n2DongleId2));
-    config->n2DebugMode = getInt(ini, "NamcoN2", "DEBUG_MODE", config->n2DebugMode);
-    config->n2ForceFeedbackEnabled =
-        getInt(ini, "NamcoN2", "FFB_ENABLED", config->n2ForceFeedbackEnabled);
-    config->n2SteeringRawMin =
-        getInt(ini, "NamcoN2", "STEERING_RAW_MIN", config->n2SteeringRawMin);
-    config->n2SteeringRawMax =
-        getInt(ini, "NamcoN2", "STEERING_RAW_MAX", config->n2SteeringRawMax);
-    config->n2AcceleratorRawMin =
-        getInt(ini, "NamcoN2", "ACCELERATOR_RAW_MIN", config->n2AcceleratorRawMin);
-    config->n2AcceleratorRawMax =
-        getInt(ini, "NamcoN2", "ACCELERATOR_RAW_MAX", config->n2AcceleratorRawMax);
-    config->n2BrakeRawMin = getInt(ini, "NamcoN2", "BRAKE_RAW_MIN", config->n2BrakeRawMin);
-    config->n2BrakeRawMax = getInt(ini, "NamcoN2", "BRAKE_RAW_MAX", config->n2BrakeRawMax);
+    getString(ini, "NamcoN2", "DONGLE_ID", config->namcoN2.dongleId,
+              sizeof(config->namcoN2.dongleId));
+    getString(ini, "NamcoN2", "DONGLE_ID_2", config->namcoN2.dongleId2,
+              sizeof(config->namcoN2.dongleId2));
+    config->namcoN2.debugMode =
+        getInt(ini, "NamcoN2", "DEBUG_MODE", config->namcoN2.debugMode);
 
-    getString(ini, "NamcoN2", "JVS_IO_NAME", config->n2JvsIoName, sizeof(config->n2JvsIoName));
-    config->n2JvsPlayers = getInt(ini, "NamcoN2", "JVS_PLAYERS", config->n2JvsPlayers);
-    config->n2JvsSwitches = getInt(ini, "NamcoN2", "JVS_SWITCHES", config->n2JvsSwitches);
-    config->n2JvsCoins = getInt(ini, "NamcoN2", "JVS_COINS", config->n2JvsCoins);
-    config->n2JvsAnalogueIn =
-        getInt(ini, "NamcoN2", "JVS_ANALOGUE_IN", config->n2JvsAnalogueIn);
-    config->n2JvsGpo = getInt(ini, "NamcoN2", "JVS_GPO", config->n2JvsGpo);
-    config->n2JvsAnalogueOut =
-        getInt(ini, "NamcoN2", "JVS_ANALOGUE_OUT", config->n2JvsAnalogueOut);
-    config->n2JvsGpi = getInt(ini, "NamcoN2", "JVS_GPI", config->n2JvsGpi);
-    config->n2YaCardEmuEnabled =
-        getInt(ini, "NamcoN2", "YACARDEMU_ENABLED", config->n2YaCardEmuEnabled);
-    config->n2YaCardEmuAutoStart =
-        getInt(ini, "NamcoN2", "YACARDEMU_AUTOSTART", config->n2YaCardEmuAutoStart);
+    // Advanced keys remain readable for existing installations, but are not
+    // emitted into a new linuxloader.ini because the defaults match N2 hardware.
+    config->namcoN2.forceFeedbackEnabled =
+        getInt(ini, "NamcoN2", "FFB_ENABLED", config->namcoN2.forceFeedbackEnabled);
+    config->namcoN2.steering.minimum =
+        getInt(ini, "NamcoN2", "STEERING_RAW_MIN", config->namcoN2.steering.minimum);
+    config->namcoN2.steering.maximum =
+        getInt(ini, "NamcoN2", "STEERING_RAW_MAX", config->namcoN2.steering.maximum);
+    config->namcoN2.accelerator.minimum = getInt(
+        ini, "NamcoN2", "ACCELERATOR_RAW_MIN", config->namcoN2.accelerator.minimum);
+    config->namcoN2.accelerator.maximum = getInt(
+        ini, "NamcoN2", "ACCELERATOR_RAW_MAX", config->namcoN2.accelerator.maximum);
+    config->namcoN2.brake.minimum =
+        getInt(ini, "NamcoN2", "BRAKE_RAW_MIN", config->namcoN2.brake.minimum);
+    config->namcoN2.brake.maximum =
+        getInt(ini, "NamcoN2", "BRAKE_RAW_MAX", config->namcoN2.brake.maximum);
+
+    getString(ini, "NamcoN2", "JVS_IO_NAME", config->namcoN2.jvs.name,
+              sizeof(config->namcoN2.jvs.name));
+    config->namcoN2.jvs.players =
+        getInt(ini, "NamcoN2", "JVS_PLAYERS", config->namcoN2.jvs.players);
+    config->namcoN2.jvs.switches =
+        getInt(ini, "NamcoN2", "JVS_SWITCHES", config->namcoN2.jvs.switches);
+    config->namcoN2.jvs.coins =
+        getInt(ini, "NamcoN2", "JVS_COINS", config->namcoN2.jvs.coins);
+    config->namcoN2.jvs.analogueInputs = getInt(
+        ini, "NamcoN2", "JVS_ANALOGUE_IN", config->namcoN2.jvs.analogueInputs);
+    config->namcoN2.jvs.generalPurposeOutputs = getInt(
+        ini, "NamcoN2", "JVS_GPO", config->namcoN2.jvs.generalPurposeOutputs);
+    config->namcoN2.jvs.analogueOutputs = getInt(
+        ini, "NamcoN2", "JVS_ANALOGUE_OUT", config->namcoN2.jvs.analogueOutputs);
+    config->namcoN2.jvs.generalPurposeInputs = getInt(
+        ini, "NamcoN2", "JVS_GPI", config->namcoN2.jvs.generalPurposeInputs);
+    config->namcoN2.card.enabled =
+        getInt(ini, "NamcoN2", "YACARDEMU_ENABLED", config->namcoN2.card.enabled);
+    config->namcoN2.card.autoStart =
+        getInt(ini, "NamcoN2", "YACARDEMU_AUTOSTART", config->namcoN2.card.autoStart);
     getString(ini, "NamcoN2", "YACARDEMU_PATH",
-              config->n2YaCardEmuPath, sizeof(config->n2YaCardEmuPath));
+              config->namcoN2.card.executablePath, sizeof(config->namcoN2.card.executablePath));
     getString(ini, "NamcoN2", "YACARDEMU_PIPE",
-              config->n2YaCardEmuPipe, sizeof(config->n2YaCardEmuPipe));
+              config->namcoN2.card.pipeName, sizeof(config->namcoN2.card.pipeName));
 
     // [Display]
     config->width = getInt(ini, "Display", "WIDTH", config->width);

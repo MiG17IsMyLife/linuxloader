@@ -137,7 +137,7 @@ void initializeN2HaspData()
      */
     setHaspRecordChecksum(n2HaspData);
 
-    const char *configuredId = getConfig()->n2DongleId;
+    const char *configuredId = getConfig()->namcoN2.dongleId;
     const char *dongleId = isValidN2DongleId(configuredId) ? configuredId : defaultN2DongleId;
     std::memcpy(n2HaspData + 0xD00, dongleId, 12);
 
@@ -166,7 +166,7 @@ uint32_t parseDongleSerialPart(const char *digits)
 
 const char *getN2DongleId()
 {
-    const char *configuredId = getConfig()->n2DongleId;
+    const char *configuredId = getConfig()->namcoN2.dongleId;
     return isValidN2DongleId(configuredId) ? configuredId : defaultN2DongleId;
 }
 
@@ -182,7 +182,7 @@ uint32_t getN2DongleSerialLo()
 
 const char *getN2Dongle2Id()
 {
-    const char *configuredId = getConfig()->n2DongleId2;
+    const char *configuredId = getConfig()->namcoN2.dongleId2;
     return isValidN2DongleId(configuredId) ? configuredId : defaultN2DongleId2;
 }
 
@@ -424,6 +424,14 @@ extern "C" int n2UpdateShifter(void)
     previousGearUp = gearUp;
     previousGearDown = gearDown;
 
+    // A directly bound H-pattern position takes priority over the sequential
+    // paddles. Releasing the button leaves the selected gear latched, which
+    // also makes keyboard bindings practical and avoids a false neutral while
+    // a physical shifter moves between gates.
+    const int directGear = getWmmtDirectGear();
+    if (directGear > 0)
+        currentGear = directGear;
+
     const bool manualShifterSwitch =
         switchActive(io, PLAYER_1, BUTTON_3) || switchActive(io, PLAYER_1, BUTTON_4) ||
         switchActive(io, PLAYER_1, BUTTON_5) || switchActive(io, PLAYER_1, BUTTON_6);
@@ -444,12 +452,14 @@ extern "C" uint16_t n2AnalogueCount(int channel, float normalized)
     switch (channel)
     {
         case N2_ANALOGUE_STEERING:
-            return calibratedRaw(normalized, config->n2SteeringRawMin, config->n2SteeringRawMax);
+            return calibratedRaw(normalized, config->namcoN2.steering.minimum,
+                                 config->namcoN2.steering.maximum);
         case N2_ANALOGUE_ACCELERATOR:
-            return calibratedRaw(normalized, config->n2AcceleratorRawMin,
-                                 config->n2AcceleratorRawMax);
+            return calibratedRaw(normalized, config->namcoN2.accelerator.minimum,
+                                 config->namcoN2.accelerator.maximum);
         case N2_ANALOGUE_BRAKE:
-            return calibratedRaw(normalized, config->n2BrakeRawMin, config->n2BrakeRawMax);
+            return calibratedRaw(normalized, config->namcoN2.brake.minimum,
+                                 config->namcoN2.brake.maximum);
         default: return 0;
     }
 }
@@ -1052,7 +1062,7 @@ extern "C" int n2InstallHooks(void)
     else
         log_warn("Namco N2 card: no YaCardEmu reader on %s; the cabinet will report E51 "
                  "until it is running",
-                 getConfig()->n2YaCardEmuPipe);
+                 getConfig()->namcoN2.card.pipeName);
 
     n2HookSymbol("hasp_cleanup", reinterpret_cast<void *>(returnHaspSuccess));
     n2HookSymbol("hasp_decrypt", reinterpret_cast<void *>(returnHaspSuccess));
@@ -1143,10 +1153,10 @@ extern "C" int n2InstallHooks(void)
         reinterpret_cast<void *>(n2AllocateImageMemory),
         reinterpret_cast<void **>(&originalAllocateImageMemory));
 
-    if (!isValidN2DongleId(getConfig()->n2DongleId))
+    if (!isValidN2DongleId(getConfig()->namcoN2.dongleId))
         log_warn("Namco N2: [NamcoN2] DONGLE_ID is not 12 decimal digits; using virtual ID %s.",
                  defaultN2DongleId);
-    if (!isValidN2DongleId(getConfig()->n2DongleId2))
+    if (!isValidN2DongleId(getConfig()->namcoN2.dongleId2))
         log_warn("Namco N2: [NamcoN2] DONGLE_ID_2 is not 12 decimal digits; using virtual ID %s.",
                  defaultN2DongleId2);
 

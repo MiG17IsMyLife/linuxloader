@@ -104,7 +104,14 @@ const struct
                       {"Coin", LA_Coin},
                       {"GearUp", LA_GearUp},
                       {"GearDown", LA_GearDown},
+                      {"Gear1", LA_Gear1},
+                      {"Gear2", LA_Gear2},
+                      {"Gear3", LA_Gear3},
+                      {"Gear4", LA_Gear4},
+                      {"Gear5", LA_Gear5},
+                      {"Gear6", LA_Gear6},
                       {"ViewChange", LA_ViewChange},
+                      {"Intrude", LA_Intrude},
                       {"MusicChange", LA_MusicChange},
                       {"Boost", LA_Boost},
                       {"BoostRight", LA_BoostRight},
@@ -607,7 +614,7 @@ void remapPerGame()
         gJvsMap[PLAYER_1][LA_Left] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_5};
         gJvsMap[PLAYER_1][LA_Right] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_6};
         gJvsMap[PLAYER_1][LA_ViewChange] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_9};
-        gJvsMap[PLAYER_1][LA_MusicChange] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_10};
+        gJvsMap[PLAYER_1][LA_Intrude] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_10};
 
         // The cabinet has no separate start switch; the panel button the game
         // reads as start is wired to the service line.
@@ -1286,6 +1293,19 @@ int loadProfileFromIni(const IniSection *section)
 int getShifterGears(void)
 {
     return gShifterGears;
+}
+
+int getWmmtDirectGear(void)
+{
+    static const LogicalAction gears[] = {
+        LA_Gear1, LA_Gear2, LA_Gear3, LA_Gear4, LA_Gear5, LA_Gear6,
+    };
+    for (int gear = 0; gear < 6; gear++)
+    {
+        if (gActionStates[PLAYER_1][gears[gear]].isActive)
+            return gear + 1;
+    }
+    return 0;
 }
 
 void loadGlobalConfig(const IniConfig *ini)
@@ -2348,7 +2368,14 @@ bool needsPlayer(LogicalAction action, const char *name)
         case LA_BoostRight:
         case LA_GearUp:
         case LA_GearDown:
+        case LA_Gear1:
+        case LA_Gear2:
+        case LA_Gear3:
+        case LA_Gear4:
+        case LA_Gear5:
+        case LA_Gear6:
         case LA_ViewChange:
+        case LA_Intrude:
         case LA_MusicChange:
         case LA_Flying_X:
         case LA_Flying_Y:
@@ -2364,6 +2391,10 @@ bool needsPlayer(LogicalAction action, const char *name)
         case LA_ClimaxSwitch:
         case LA_CardInsert:
             return false;
+        case LA_Steer:
+        case LA_Gas:
+        case LA_Brake:
+            return strcmp(name, "WMMT") != 0;
         case LA_Up:
         case LA_Down:
         case LA_Left:

@@ -44,7 +44,7 @@ void updateOutput(Update update)
         backend = outputBackend;
     }
     // Never invoke a future device backend while holding the state lock.
-    if (getConfig()->n2ForceFeedbackEnabled && backend.apply)
+    if (getConfig()->namcoN2.forceFeedbackEnabled && backend.apply)
         backend.apply(&state, backend.userData);
 }
 
@@ -142,7 +142,7 @@ extern "C" int n2SteeringIoInstallHooks(void)
                       reinterpret_cast<void *>(offTorque),
                       reinterpret_cast<void **>(&originalOffTorque));
     log_info("Namco N2 steering: installed %d output hooks (FFB backend %s)",
-             installed, getConfig()->n2ForceFeedbackEnabled ? "enabled" : "disabled");
+             installed, getConfig()->namcoN2.forceFeedbackEnabled ? "enabled" : "disabled");
     return installed > 0 ? 0 : 1;
 }
 
@@ -160,7 +160,7 @@ extern "C" void n2SteeringIoSetBackend(const N2SteeringOutputBackend *backend)
     }
     if (previous.shutdown)
         previous.shutdown(previous.userData);
-    if (getConfig()->n2ForceFeedbackEnabled && current.apply)
+    if (getConfig()->namcoN2.forceFeedbackEnabled && current.apply)
         current.apply(&state, current.userData);
 }
 

@@ -66,9 +66,9 @@ int initJVS()
          * settles into its 50 Hz poll of switches, coins, analogue inputs and
          * the two output banks.
          */
-        io.capabilities.switches = getConfig()->n2JvsSwitches;
-        io.capabilities.coins = getConfig()->n2JvsCoins;
-        io.capabilities.players = getConfig()->n2JvsPlayers;
+        io.capabilities.switches = getConfig()->namcoN2.jvs.switches;
+        io.capabilities.coins = getConfig()->namcoN2.jvs.coins;
+        io.capabilities.players = getConfig()->namcoN2.jvs.players;
         /*
          * The cabinet's wheel and pedals are 16 bit, and the game keeps its
          * calibration in raw counts, so the loader hands the values over
@@ -76,14 +76,15 @@ int initJVS()
          */
         io.capabilities.analogueInBits = 16;
         io.capabilities.rightAlignBits = 0;
-        io.capabilities.analogueInChannels = getConfig()->n2JvsAnalogueIn;
-        io.capabilities.generalPurposeInputs = getConfig()->n2JvsGpi;
-        io.capabilities.generalPurposeOutputs = getConfig()->n2JvsGpo;
-        io.capabilities.analogueOutChannels = getConfig()->n2JvsAnalogueOut;
+        io.capabilities.analogueInChannels = getConfig()->namcoN2.jvs.analogueInputs;
+        io.capabilities.generalPurposeInputs = getConfig()->namcoN2.jvs.generalPurposeInputs;
+        io.capabilities.generalPurposeOutputs = getConfig()->namcoN2.jvs.generalPurposeOutputs;
+        io.capabilities.analogueOutChannels = getConfig()->namcoN2.jvs.analogueOutputs;
         io.capabilities.commandVersion = 16;
         io.capabilities.jvsVersion = 16;
         io.capabilities.commsVersion = 16;
-        strncpy(io.capabilities.name, getConfig()->n2JvsIoName, sizeof(io.capabilities.name) - 1);
+        strncpy(io.capabilities.name, getConfig()->namcoN2.jvs.name,
+                sizeof(io.capabilities.name) - 1);
         io.capabilities.name[sizeof(io.capabilities.name) - 1] = '\0';
     }
     break;

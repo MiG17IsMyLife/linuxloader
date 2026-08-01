@@ -219,7 +219,7 @@ int main(int argc, char *argv[], char *envp[])
      */
     if (getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2 && final_argc == 1)
     {
-        if (getConfig()->n2DebugMode)
+        if (getConfig()->namcoN2.debugMode)
         {
             log_warn("Namco N2: [NamcoN2] DEBUG_MODE is on; starting the ELF without arguments "
                      "so the game runs in its development mode");

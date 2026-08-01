@@ -23,7 +23,14 @@ typedef enum
     LA_Coin,
     LA_GearUp,
     LA_GearDown,
+    LA_Gear1,
+    LA_Gear2,
+    LA_Gear3,
+    LA_Gear4,
+    LA_Gear5,
+    LA_Gear6,
     LA_ViewChange,
+    LA_Intrude,
     LA_MusicChange,
     LA_Boost,
     LA_BoostRight,
@@ -247,6 +254,9 @@ int listSdlControllers(void);
  * ShifterGears key in controls.ini.
  */
 int getShifterGears(void);
+
+/* Active WMMT H-pattern position, 1..6, or 0 when none is pressed. */
+int getWmmtDirectGear(void);
 
 #ifdef __cplusplus
 }
