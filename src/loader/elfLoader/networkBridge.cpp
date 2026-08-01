@@ -313,10 +313,10 @@ namespace NetworkBridge
         MAP("ntohl", bridgeNtohl);
         MAP("gethostbyname_r", bridgeGethostbyname_r);
         MAP("gethostbyaddr_r", bridgeGethostbyaddr_r);
-        MAP("gethostbyaddr", bridgeGethostbyaddr_r);
-        MAP("gethostbyname", bridgeGethostbyname_r);
+        MAP("gethostbyname", bridgeGethostbyname);
+        MAP("gethostbyaddr", bridgeGethostbyaddr);
         MAP("gethostname", bridgeGethostname);
-        MAP("getservbyname", bridgeGethostbyname_r);
+        MAP("getservbyname", bridgeGetservbyname);
     }
 
     unsigned long bridgeInet_addr(const char *cp)
@@ -923,14 +923,6 @@ namespace
 constexpr int guestFdSetBits = 1024;
 constexpr size_t guestFdSetBytes = guestFdSetBits / 8;
 
-bool guestFdIsSet(int descriptor, const void *set)
-{
-    if (!set || descriptor < 0 || descriptor >= guestFdSetBits)
-        return false;
-    const uint32_t *words = static_cast<const uint32_t *>(set);
-    return (words[descriptor / 32] & (1u << (descriptor % 32))) != 0;
-}
-
 void guestFdSet(int descriptor, void *set)
 {
     if (!set || descriptor < 0 || descriptor >= guestFdSetBits)
@@ -1137,22 +1129,145 @@ extern "C" int bridgeSocketPair(int descriptors[2])
     return 0;
 }
 
+#pragma pack(push, 4)
+struct LinuxHostent
+{
+    char *h_name;
+    char **h_aliases;
+    int32_t h_addrtype;
+    int32_t h_length;
+    char **h_addr_list;
+};
+#pragma pack(pop)
+static_assert(sizeof(struct LinuxHostent) == 20, "i386 struct hostent is 20 bytes");
+
+namespace
+{
+    // One record per thread, the same lifetime rule the real gethostbyname has.
+    struct HostentStorage
+    {
+        LinuxHostent record;
+        char name[256];
+        uint8_t address[4];
+        char *addressList[2];
+        char *aliasList[1];
+    };
+
+    LinuxHostent *resolveHost(const char *name)
+    {
+        static thread_local HostentStorage storage;
+
+        struct addrinfo hints = {};
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+
+        struct addrinfo *found = nullptr;
+        if (getaddrinfo(name, nullptr, &hints, &found) != 0 || !found)
+            return nullptr;
+
+        const struct sockaddr_in *resolved = reinterpret_cast<struct sockaddr_in *>(found->ai_addr);
+        memcpy(storage.address, &resolved->sin_addr, sizeof(storage.address));
+        strncpy(storage.name, found->ai_canonname ? found->ai_canonname : name, sizeof(storage.name) - 1);
+        storage.name[sizeof(storage.name) - 1] = '\0';
+        freeaddrinfo(found);
+
+        storage.addressList[0] = reinterpret_cast<char *>(storage.address);
+        storage.addressList[1] = nullptr;
+        storage.aliasList[0] = nullptr;
+
+        storage.record.h_name = storage.name;
+        storage.record.h_aliases = storage.aliasList;
+        storage.record.h_addrtype = AF_INET;
+        storage.record.h_length = static_cast<int32_t>(sizeof(storage.address));
+        storage.record.h_addr_list = storage.addressList;
+        return &storage.record;
+    }
+}
+
+extern "C" void *bridgeGethostbyname(const char *name)
+{
+    std::lock_guard<std::mutex> lock(g_net_mutex);
+
+    LinuxHostent *record = name ? resolveHost(name) : nullptr;
+    if (!record)
+    {
+        log_debug("gethostbyname(\"%s\") found no address", name ? name : "(null)");
+        return nullptr;
+    }
+
+    log_trace("gethostbyname(\"%s\") = %u.%u.%u.%u", name,
+              (unsigned)(uint8_t)record->h_addr_list[0][0], (unsigned)(uint8_t)record->h_addr_list[0][1],
+              (unsigned)(uint8_t)record->h_addr_list[0][2], (unsigned)(uint8_t)record->h_addr_list[0][3]);
+    return record;
+}
+
 int NetworkBridge::bridgeGethostbyname_r(const char *name, void *ret, char *buf, size_t buflen, void **result, int *h_errnop)
 {
     std::lock_guard<std::mutex> lock(g_net_mutex);
-    struct hostent *he = gethostbyname(name);
-    if (!he)
+
+    LinuxHostent *record = name ? resolveHost(name) : nullptr;
+    if (!record)
     {
         if (h_errnop)
-            *h_errnop = WSAGetLastError();
+            *h_errnop = 1; // HOST_NOT_FOUND
         if (result)
             *result = nullptr;
         return -1;
     }
-    memcpy(ret, he, sizeof(struct hostent));
+
+    if (ret)
+        memcpy(ret, record, sizeof(*record));
     if (result)
-        *result = ret;
+        *result = ret ? ret : record;
     return 0;
+}
+
+extern "C" void *bridgeGethostbyaddr(const void *addr, int len, int type)
+{
+    std::lock_guard<std::mutex> lock(g_net_mutex);
+
+    if (!addr || len != 4 || type != AF_INET)
+        return nullptr;
+
+    char text[INET_ADDRSTRLEN] = {};
+    if (!InetNtopA(AF_INET, const_cast<void *>(addr), text, sizeof(text)))
+        return nullptr;
+
+    return resolveHost(text);
+}
+
+/*
+ * Same shape problem as hostent: Winsock's servent holds the port in a short
+ * where i386 glibc holds an int, so the proto pointer moves.
+ */
+#pragma pack(push, 4)
+struct LinuxServent
+{
+    char *s_name;
+    char **s_aliases;
+    int32_t s_port;
+    char *s_proto;
+};
+#pragma pack(pop)
+static_assert(sizeof(struct LinuxServent) == 16, "i386 struct servent is 16 bytes");
+
+extern "C" void *bridgeGetservbyname(const char *name, const char *proto)
+{
+    std::lock_guard<std::mutex> lock(g_net_mutex);
+
+    struct servent *entry = name ? getservbyname(name, proto) : nullptr;
+    if (!entry)
+        return nullptr;
+
+    static thread_local LinuxServent record;
+    static thread_local char *aliasList[1];
+    aliasList[0] = nullptr;
+
+    record.s_name = entry->s_name;
+    record.s_aliases = aliasList;
+    record.s_port = static_cast<int32_t>(static_cast<uint16_t>(entry->s_port));
+    record.s_proto = entry->s_proto;
+    return &record;
 }
 
 int NetworkBridge::bridgeGethostbyaddr_r(const void *addr, int len, int type, void *ret, char *buf, size_t buflen, void **result,
@@ -1176,11 +1291,15 @@ int NetworkBridge::bridgeGethostbyaddr_r(const void *addr, int len, int type, vo
 
 extern "C" int bridgeGethostname(char *name, size_t namelen)
 {
-    // fallback to localhost if gethostname fails
     if (name == nullptr || namelen == 0)
-    {
         return -1;
+
+    if (gethostname(name, static_cast<int>(namelen)) == 0)
+    {
+        name[namelen - 1] = '\0';
+        return 0;
     }
+
     strncpy(name, "localhost", namelen - 1);
     name[namelen - 1] = '\0';
     return 0;

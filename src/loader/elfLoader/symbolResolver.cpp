@@ -35,6 +35,7 @@
 #include "elfLoader.hpp"
 #include "../log/log.h"
 #include "../patching/patch.h"
+#include "../hardware/namco/n2/n2.h"
 
 extern "C" void __gmon_start__()
 {
@@ -327,6 +328,8 @@ void SymbolResolver::LoadNeededLibrary(const std::string &linuxName)
                     {
                         m_LoadedLibraries.push_back(reinterpret_cast<void *>(handle));
                     }
+                    m_HandlesByName[linuxName] = reinterpret_cast<void *>(handle);
+                    m_HandlesByName[targetName] = reinterpret_cast<void *>(handle);
                     log_info("Successfully loaded DLL from search path: %s", candidatePath.c_str());
                     return;
                 }
@@ -343,6 +346,8 @@ void SymbolResolver::LoadNeededLibrary(const std::string &linuxName)
             {
                 m_LoadedLibraries.push_back(reinterpret_cast<void *>(handle));
             }
+            m_HandlesByName[linuxName] = reinterpret_cast<void *>(handle);
+            m_HandlesByName[targetName] = reinterpret_cast<void *>(handle);
             log_info("Successfully loaded DLL library: %s", targetName.c_str());
             return;
         }
@@ -362,16 +367,20 @@ void SymbolResolver::LoadNeededLibrary(const std::string &linuxName)
     std::string fullPath = targetName;
     bool found = false;
 
+    const size_t lastSeparator = targetName.find_last_of("/\\");
+    const std::string searchName =
+        lastSeparator == std::string::npos ? targetName : targetName.substr(lastSeparator + 1);
+
     for (const auto &searchPath : m_LibrarySearchPaths)
     {
-        std::string candidatePath = searchPath + "\\" + targetName;
+        std::string candidatePath = searchPath + "\\" + searchName;
         std::ifstream testFile(candidatePath.c_str());
         if (testFile.good())
         {
             testFile.close();
             found = true;
             fullPath = candidatePath;
-            log_info("Found library %s in search path: %s", targetName.c_str(), searchPath.c_str());
+            log_info("Found library %s in search path: %s", searchName.c_str(), searchPath.c_str());
             break;
         }
         testFile.close();
@@ -392,11 +401,31 @@ void SymbolResolver::LoadNeededLibrary(const std::string &linuxName)
     {
         fullPath = followTextSymlink(fullPath);
 
+        /*
+         * Two names can lead to the same file - libstdc++.so.6 is a link to
+         * libstdc++.so.6.0.7, and every dependent asks for one or the other -
+         * so the resolved path is checked as well as the name that was asked
+         * for.  Mapping a library twice gives it two sets of globals, which a
+         * library holding state of its own does not survive: SDL was being
+         * loaded five times over.
+         */
+        if (std::find(m_LoadedNativeNames.begin(), m_LoadedNativeNames.end(), fullPath) != m_LoadedNativeNames.end())
+        {
+            log_debug("Linux SO %s is %s, already natively loaded. Skipping.", targetName.c_str(), fullPath.c_str());
+            m_LoadedNativeNames.push_back(targetName);
+            return;
+        }
+
         ElfLoader *soLoader = new ElfLoader();
         soLoader->SetIsSharedObject(true);
         if (soLoader->Load(fullPath))
         {
+            // Both, so either name finds it next time.
+            m_LoadedNativeNames.push_back(targetName);
             m_LoadedNativeNames.push_back(fullPath);
+            m_HandlesByName[linuxName] = soLoader;
+            m_HandlesByName[targetName] = soLoader;
+            m_HandlesByName[fullPath] = soLoader;
             m_NativeLoaders.push_back(soLoader);
             log_info("Successfully loaded and exported symbols for native Linux SO: %s", fullPath.c_str());
             m_PendingSOPatches.push_back({(uintptr_t)soLoader->GetBaseAddress(), fullPath});
@@ -419,6 +448,43 @@ void SymbolResolver::LoadNeededLibrary(const std::string &linuxName)
         }
         log_error("Library file not found at path: %s (searched in %zu paths)", targetName.c_str(), m_LibrarySearchPaths.size());
     }
+}
+
+void *SymbolResolver::GetLibraryHandle(const std::string &linuxName)
+{
+    auto entry = m_HandlesByName.find(linuxName);
+    if (entry != m_HandlesByName.end())
+        return entry->second;
+
+    // A caller may name the same module by its path where it was recorded by
+    // its bare name, or the other way round.
+    const size_t lastSeparator = linuxName.find_last_of("/\\");
+    if (lastSeparator == std::string::npos)
+        return nullptr;
+
+    entry = m_HandlesByName.find(linuxName.substr(lastSeparator + 1));
+    return entry == m_HandlesByName.end() ? nullptr : entry->second;
+}
+
+void *SymbolResolver::ResolveSymbolInModule(void *handle, const std::string &symbolName)
+{
+    if (!handle)
+        return nullptr;
+
+    for (ElfLoader *loader : m_NativeLoaders)
+    {
+        if (loader == handle)
+            return loader->FindExportedSymbol(symbolName);
+    }
+
+    for (void *library : m_LoadedLibraries)
+    {
+        if (library == handle)
+            return reinterpret_cast<void *>(
+                GetProcAddress(reinterpret_cast<HMODULE>(library), symbolName.c_str()));
+    }
+
+    return nullptr;
 }
 
 void SymbolResolver::RegisterNativeSymbol(const std::string &symbolName, void *symbolPtr)
@@ -479,12 +545,6 @@ static void *CreateUnresolvedStub(const std::string &symbolName)
     static size_t blockSize = 0;
     static size_t offset = 0;
 
-    /*
-     * A stub is nothing but the name it reports, so one per symbol is enough.
-     * Callers that resolve on a hot path - an image allocation asking for an
-     * Alchemy entry point its engine version does not have, say - would
-     * otherwise mint a fresh stub every time and never hand one back.
-     */
     static std::unordered_map<std::string, void *> issued;
     auto existing = issued.find(symbolName);
     if (existing != issued.end())
@@ -691,6 +751,28 @@ void bridgeLoadNeededLibrary(const char *filename)
     SymbolResolver::GetInstance().ProcessAllRelocations();
     SymbolResolver::GetInstance().PatchAllSOs();
     SymbolResolver::GetInstance().RunAllInits();
+
+    ElfLoader::RegisterAllEhFrames();
+}
+
+void *bridgeResolveSymbolOptional(const char *symbolName)
+{
+    if (!symbolName)
+        return nullptr;
+
+    std::string module;
+    void *address = SymbolResolver::GetInstance().ResolveSymbol(symbolName, &module);
+    return module == "UNRESOLVED_STUB" ? nullptr : address;
+}
+
+void *bridgeLibraryHandle(const char *filename)
+{
+    return filename ? SymbolResolver::GetInstance().GetLibraryHandle(filename) : nullptr;
+}
+
+void *bridgeResolveSymbolInModule(void *handle, const char *symbolName)
+{
+    return symbolName ? SymbolResolver::GetInstance().ResolveSymbolInModule(handle, symbolName) : nullptr;
 }
 
 bool SymbolResolver::ProcessAllRelocations()
@@ -717,6 +799,8 @@ void SymbolResolver::PatchAllSOs()
 
 bool SymbolResolver::RunAllInits()
 {
+    n2InstallAdmHooks();
+
     for (auto it = m_NativeLoaders.rbegin(); it != m_NativeLoaders.rend(); ++it)
     {
         if (*it && !(*it)->RunInit())

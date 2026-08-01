@@ -531,13 +531,21 @@ uint32_t *admChooseFbConfig()
     return &admFbConfig;
 }
 
-AdmWindow *admCreateWindow()
+static size_t patchWritableGlEntryPoints()
 {
     if (!getSDLWindow())
         startSDL();
-    const size_t patchedGlFunctions =
+
+    const size_t patched =
         SymbolResolver::GetInstance().PatchNativeJumpStubs("gl", GLHooks_GetProcAddress);
-    log_info("Namco N2: initialized %zu writable OpenGL entry points", patchedGlFunctions);
+    if (patched)
+        log_info("Namco N2: initialized %zu writable OpenGL entry points", patched);
+    return patched;
+}
+
+AdmWindow *admCreateWindow()
+{
+    patchWritableGlEntryPoints();
     std::memcpy(admWindow.ident, "WNDW", 4);
     admWindow.window = getSDLWindow();
     return admWindow.window ? &admWindow : nullptr;
@@ -549,6 +557,14 @@ int admMakeCurrent()
     return window && getSDLContext() && SDL_GL_MakeCurrent(window, getSDLContext()) ? 1 : 0;
 }
 
+int admGetDeviceAttribi(int, int attribute, int *value)
+{
+    if (value)
+        *value = 0;
+    log_trace("Namco N2: display manager attribute 0x%X answered as zero", attribute);
+    return 1;
+}
+
 int admSwapBuffers(AdmWindow *)
 {
     pollEvents();
@@ -557,44 +573,36 @@ int admSwapBuffers(AdmWindow *)
         return 0;
     SDL_GL_SwapWindow(window);
 
-    /*
-     * [Graphics] FPS_LIMITER_ENABLED / FPS_TARGET are applied from the present
-     * call, which for Lindbergh titles is glXSwapBuffers or glutSwapBuffers.
-     * N2 presents through the ADM library instead, so the limiter has to be
-     * driven from here or the settings do nothing.
-     */
     if (getConfig()->fpsLimiter)
         frameTiming();
 
-    /*
-     * Same readout the Lindbergh present path puts in the title bar, but not on
-     * every present.  SDL_SetWindowTitle is a SetWindowText behind the scenes,
-     * which crosses into the window's message queue and blocks until the window
-     * procedure has handled it; doing that 60 times a second buys nothing a
-     * human can read.  Twice a second is still live and costs nothing.
-     */
-    // calculateFps() counts the frames it is called on, so it still runs every
-    // present; only the window text is rationed.
-    const double fps = calculateFps();
-    static int framesSinceTitle = 0;
-    if (++framesSinceTitle >= 30)
-    {
-        framesSinceTitle = 0;
-        char windowTitle[128] = {};
-        std::snprintf(windowTitle, sizeof(windowTitle), "%s - FPS: %.2f", n2GetGameTitle(), fps);
-        SDL_SetWindowTitle(window, windowTitle);
-    }
-
+    showFpsInWindowTitle(n2GetGameTitle());
     return 1;
 }
 
+//Counter-Strike Neo asks for the swap interval on every present
+ 
 int admSwapInterval(int interval)
 {
+    static bool haveApplied = false;
+    static bool announced = false;
+    static int applied = 0;
+
     if (getConfig()->fpsLimiter && interval != 0)
     {
-        log_info("Namco N2: vsync suppressed; [Graphics] FPS_TARGET drives the frame rate");
+        if (!announced)
+        {
+            log_info("Namco N2: vsync suppressed; [Graphics] FPS_TARGET drives the frame rate");
+            announced = true;
+        }
         interval = 0;
     }
+
+    if (haveApplied && applied == interval)
+        return 1;
+
+    haveApplied = true;
+    applied = interval;
     return SDL_GL_SetSwapInterval(interval) ? 1 : 0;
 }
 
@@ -740,12 +748,6 @@ void n2AllocateImageMemory(void *image)
     uint32_t &imageSize = *reinterpret_cast<uint32_t *>(object + 0x30);
     const uint32_t compressedImageSize = GLHooks_ConsumeCompressedImageSize();
 
-    /*
-     * WMMT3 queries the exact compressed mip size from OpenGL immediately
-     * before constructing the corresponding igImage.  Carry that authoritative
-     * value across the Alchemy allocation instead of trusting its occasionally
-     * stale _imageSize field.
-     */
     if (compressedImageSize && compressedImageSize <= 256 * 1024 * 1024)
     {
         const uint32_t staleSize = imageSize;
@@ -905,7 +907,26 @@ int setTextureRegion(void *self, int texture, int x, int y, int width, int heigh
 }
 } // namespace
 
-extern "C" int n2DetectGame(void)
+/*
+ * Counter-Strike Neo ships a stripped launcher with nine exported symbols, so
+ * there is nothing in it to recognise.  What is distinctive is the pairing: the
+ * launcher sits next to the GoldSrc engine module that Namco built for the
+ * board, and no other title on the loader's roster is laid out that way.
+ */
+static bool looksLikeCounterStrikeNeo(const char *elfPath)
+{
+    if (!elfPath || !*elfPath)
+        return false;
+
+    std::error_code failure;
+    const std::filesystem::path executable(elfPath);
+    if (executable.stem().string().rfind("hlds", 0) != 0)
+        return false;
+
+    return std::filesystem::exists(executable.parent_path() / "engine_amd.so", failure);
+}
+
+extern "C" int n2DetectGame(const char *elfPath)
 {
     detectedGame = N2_GAME_NONE;
     detectedRevision.clear();
@@ -913,7 +934,14 @@ extern "C" int n2DetectGame(void)
     RomInfo *romInfo = static_cast<RomInfo *>(n2ResolveSymbol("gRomInfo"));
     void *systemMarker = n2ResolveSymbol("_ZN10clSystemN212initSystemN2Ev");
     if (!romInfo || !systemMarker || !isPrintableString(romInfo->revisionName, sizeof(romInfo->revisionName)))
-        return 0;
+    {
+        if (!looksLikeCounterStrikeNeo(elfPath))
+            return 0;
+
+        detectedGame = N2_GAME_CSNEO;
+        log_info("Detected Namco System N2 title: Counter-Strike Neo");
+        return 1;
+    }
 
     detectedRevision.assign(romInfo->revisionName, strnlen(romInfo->revisionName, sizeof(romInfo->revisionName)));
     if (detectedRevision.find("WM3100") != std::string::npos)
@@ -933,6 +961,11 @@ extern "C" int n2IsDetected(void)
     return detectedGame != N2_GAME_NONE;
 }
 
+extern "C" int n2IsWanganTitle(void)
+{
+    return detectedGame != N2_GAME_NONE && detectedGame != N2_GAME_CSNEO;
+}
+
 extern "C" N2Game n2GetGame(void)
 {
     return detectedGame;
@@ -945,6 +978,7 @@ extern "C" const char *n2GetGameTitle(void)
         case N2_GAME_WMMT3: return "Wangan Midnight Maximum Tune 3";
         case N2_GAME_WMMT3DX: return "Wangan Midnight Maximum Tune 3DX";
         case N2_GAME_WMMT3DX_PLUS: return "Wangan Midnight Maximum Tune 3DX+";
+        case N2_GAME_CSNEO: return "Counter-Strike Neo";
         default: return "Wangan Midnight Maximum Tune 3 series";
     }
 }
@@ -956,13 +990,16 @@ extern "C" const char *n2GetGameShortTitle(void)
         case N2_GAME_WMMT3: return "WMMT3";
         case N2_GAME_WMMT3DX: return "WMMT3DX";
         case N2_GAME_WMMT3DX_PLUS: return "WMMT3DX+";
+        case N2_GAME_CSNEO: return "CSNeo";
         default: return "WMMT3 series";
     }
 }
 
 extern "C" const char *n2GetGameId(void)
 {
-    return detectedRevision.empty() ? "NAMCO-N2" : detectedRevision.c_str();
+    if (!detectedRevision.empty())
+        return detectedRevision.c_str();
+    return detectedGame == N2_GAME_CSNEO ? "CSN1" : "NAMCO-N2";
 }
 
 extern "C" const char *n2GetRevision(void)
@@ -970,10 +1007,62 @@ extern "C" const char *n2GetRevision(void)
     return detectedRevision.c_str();
 }
 
+extern "C" int n2InstallAdmHooks(void)
+{
+    static bool installed = false;
+    if (installed)
+        return 1;
+    if (!n2ResolveSymbol("admInitDevicei"))
+        return 0;
+
+    n2HookSymbol("admvt_setup", reinterpret_cast<void *>(returnSuccess));
+    n2HookSymbol("admShutdown", reinterpret_cast<void *>(returnSuccess));
+    n2HookSymbol("admGetString", reinterpret_cast<void *>(admGetString));
+    n2HookSymbol("admGetNumDevices", reinterpret_cast<void *>(returnSuccess));
+    n2HookSymbol("admInitDevicei", reinterpret_cast<void *>(returnSuccess));
+    n2HookSymbol("admChooseModeConfigi", reinterpret_cast<void *>(admChooseMode));
+    n2HookSymbol("admModeConfigi", reinterpret_cast<void *>(returnSuccess));
+    n2HookSymbol("admChooseFBConfigi", reinterpret_cast<void *>(admChooseFbConfig));
+    n2HookSymbol("admCreateScreeni", reinterpret_cast<void *>(returnSuccess));
+    n2HookSymbol("admCreateGraphicsContext", reinterpret_cast<void *>(returnSuccess));
+    n2HookSymbol("admCreateWindowi", reinterpret_cast<void *>(admCreateWindow));
+    n2HookSymbol("admDisplayScreen", reinterpret_cast<void *>(returnSuccess));
+    n2HookSymbol("admMakeContextCurrent", reinterpret_cast<void *>(admMakeCurrent));
+    n2HookSymbol("admSwapInterval", reinterpret_cast<void *>(admSwapInterval));
+    n2HookSymbol("admCursorAttribi", reinterpret_cast<void *>(returnSuccess));
+    n2HookSymbol("admGetDeviceAttribi", reinterpret_cast<void *>(admGetDeviceAttribi));
+    n2HookSymbol("admSwapBuffers", reinterpret_cast<void *>(admSwapBuffers));
+    n2HookSymbol("admSetMonitorGamma", reinterpret_cast<void *>(returnSuccess));
+
+    if (!n2ArmHooks())
+        return 0;
+
+    if (getSDLWindow())
+        patchWritableGlEntryPoints();
+
+    installed = true;
+    log_info("Namco N2: display manager entry points redirected to the loader's GL context");
+    return 1;
+}
+
 extern "C" int n2InstallHooks(void)
 {
     if (!n2IsDetected())
         return 0;
+
+    if (!n2IsWanganTitle())
+    {
+        std::error_code failure;
+        std::filesystem::create_directories("freespace/contents2", failure);
+        if (failure)
+            log_warn("Namco N2: could not create freespace/contents2 (%s); the game will "
+                     "start with an empty configuration",
+                     failure.message().c_str());
+
+        n2InstallAdmHooks();
+        log_info("Namco N2 compatibility hooks installed");
+        return 0;
+    }
 
     n2Jvio = static_cast<uint8_t *>(n2ResolveSymbol("n2jvio"));
 
@@ -991,16 +1080,9 @@ extern "C" int n2InstallHooks(void)
     n2HookSymbol("_ZN10clKickback13waitSelfCheckEv", reinterpret_cast<void *>(returnSuccess));
     n2SteeringIoInstallHooks();
 
-    // Silence is not fatal, so a missing openal32.dll must not abort startup.
+    // Silence is not fatal, missing openal32.dll must not abort startup.
     n2AudioInstallHooks();
 
-    /*
-     * These are always hooked so the reported reader state follows the live
-     * YaCardEmu connection instead of a config flag.  When the pipe is up the
-     * detours forward to the game's own request, so the real serial
-     * conversation still happens; when it is down they answer E51 the way a
-     * cabinet with an unplugged reader/writer does.
-     */
     n2HookSymbolWithOriginal("_ZN23clCardDeviceGameService16requestGetStatusEv",
                              reinterpret_cast<void *>(getStatusCardDevice),
                              reinterpret_cast<void **>(&originalRequestGetStatus));
@@ -1052,24 +1134,7 @@ extern "C" int n2InstallHooks(void)
     n2HookSymbol("_ZNK7clHasp211getSerialHiEv", reinterpret_cast<void *>(getN2Dongle2SerialHi));
     n2HookSymbol("_ZNK7clHasp211getSerialLoEv", reinterpret_cast<void *>(getN2Dongle2SerialLo));
 
-    n2HookSymbol("admvt_setup", reinterpret_cast<void *>(returnSuccess));
-    n2HookSymbol("admShutdown", reinterpret_cast<void *>(returnSuccess));
-    n2HookSymbol("admGetString", reinterpret_cast<void *>(admGetString));
-    n2HookSymbol("admGetNumDevices", reinterpret_cast<void *>(returnSuccess));
-    n2HookSymbol("admInitDevicei", reinterpret_cast<void *>(returnSuccess));
-    n2HookSymbol("admChooseModeConfigi", reinterpret_cast<void *>(admChooseMode));
-    n2HookSymbol("admModeConfigi", reinterpret_cast<void *>(returnSuccess));
-    n2HookSymbol("admChooseFBConfigi", reinterpret_cast<void *>(admChooseFbConfig));
-    n2HookSymbol("admCreateScreeni", reinterpret_cast<void *>(returnSuccess));
-    n2HookSymbol("admCreateGraphicsContext", reinterpret_cast<void *>(returnSuccess));
-    n2HookSymbol("admCreateWindowi", reinterpret_cast<void *>(admCreateWindow));
-    n2HookSymbol("admDisplayScreen", reinterpret_cast<void *>(returnSuccess));
-    n2HookSymbol("admMakeContextCurrent", reinterpret_cast<void *>(admMakeCurrent));
-    n2HookSymbol("admSwapInterval", reinterpret_cast<void *>(admSwapInterval));
-    n2HookSymbol("admCursorAttribi", reinterpret_cast<void *>(returnSuccess));
-    n2HookSymbol("admGetDeviceAttribi", reinterpret_cast<void *>(returnSuccess));
-    n2HookSymbol("admSwapBuffers", reinterpret_cast<void *>(admSwapBuffers));
-    n2HookSymbol("admSetMonitorGamma", reinterpret_cast<void *>(returnSuccess));
+    n2InstallAdmHooks();
 
     clAppGetInstance = reinterpret_cast<ClAppGetInstance>(
         n2ResolveSymbol("_ZN11clAppSystem11getInstanceEv"));
@@ -1139,12 +1204,10 @@ extern "C" int n2InitializeGraphics(void)
 {
     if (!n2IsDetected())
         return 0;
-    if (!getSDLWindow())
-        startSDL();
-    const size_t patchedGlFunctions =
-        SymbolResolver::GetInstance().PatchNativeJumpStubs("gl", GLHooks_GetProcAddress);
-    log_info("Namco N2: initialized %zu writable OpenGL entry points", patchedGlFunctions);
-    return patchedGlFunctions > 0 ? 0 : 1;
+
+    if (patchWritableGlEntryPoints() == 0 && n2IsWanganTitle())
+        return 1;
+    return 0;
 }
 
 extern "C" int n2HandleSystemCommand(const char *command)

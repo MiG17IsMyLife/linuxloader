@@ -55,6 +55,11 @@ namespace NetworkBridge
     int bridgeGethostbyaddr_r(const void *addr, int len, int type, void *ret, char *buf, size_t buflen, void **result,
                                         int *h_errnop);
     extern "C" int bridgeGethostname(char *name, size_t namelen);
+
+    // The plain forms return the record itself; see the note on their mapping.
+    extern "C" void *bridgeGethostbyname(const char *name);
+    extern "C" void *bridgeGethostbyaddr(const void *addr, int len, int type);
+    extern "C" void *bridgeGetservbyname(const char *name, const char *proto);
     extern "C" uint16_t bridgeNtohs(uint16_t netshort);
     extern "C" uint16_t bridgeHtons(uint16_t hostshort);
     extern "C" uint32_t bridgeNtohl(uint32_t netlong);

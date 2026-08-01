@@ -30,6 +30,9 @@ class SymbolResolver
     // Load a library mapped by RegisterLibrary
     void LoadNeededLibrary(const std::string &linuxName);
 
+    void *GetLibraryHandle(const std::string &linuxName);
+    void *ResolveSymbolInModule(void *handle, const std::string &symbolName);
+
     // Resolve a function/symbol from the loaded chain of libraries or internal bridges
     void *ResolveSymbol(const std::string &symbolName, std::string *outModuleName);
 
@@ -63,6 +66,7 @@ class SymbolResolver
     std::vector<void *> m_LoadedLibraries;        // Stores handles to loaded DLLs
     std::vector<ElfLoader *> m_NativeLoaders;     // Stores loaders for purely native Linux shared objects
     std::vector<std::string> m_LoadedNativeNames; // Tracks already loaded Linux SO file paths
+    std::unordered_map<std::string, void *> m_HandlesByName; // Every name a module can be dlopened by
     std::vector<std::pair<uintptr_t, std::string>> m_PendingSOPatches; // Deferred SO patches (base, path)
 
     // Library search paths
@@ -76,6 +80,9 @@ extern "C"
 #endif
     void *bridgeResolveSymbol(const char *symbolName);
     void bridgeLoadNeededLibrary(const char *filename);
+    void *bridgeResolveSymbolOptional(const char *symbolName);
+    void *bridgeLibraryHandle(const char *filename);
+    void *bridgeResolveSymbolInModule(void *handle, const char *symbolName);
     void EnsureLibGccLoaded();
     void *GetLibGccSymbol(const char *name);
 #ifdef __cplusplus

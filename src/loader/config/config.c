@@ -42,15 +42,27 @@ static int detectGame(uint32_t elf_crc)
         config.gameShortTitle = (char *)n2GetGameShortTitle();
         config.gameDVP = (char *)"Namco System N2";
         config.gameID = (char *)n2GetGameId();
-        config.gameReleaseYear = n2GetGame() == N2_GAME_WMMT3DX_PLUS ? (char *)"2010" : (char *)"";
-        config.gameNativeResolutions = (char *)"640x480";
         config.gameStatus = WORKING;
         config.jvsIOType = SEGA_TYPE_3;
+        config.region = JP;
+
+        if (n2GetGame() == N2_GAME_CSNEO)
+        {
+            config.gameReleaseYear = (char *)"2005";
+            config.gameNativeResolutions = (char *)"1024x768";
+            config.gameType = SHOOTING;
+            config.width = 1024;
+            config.height = 768;
+            config.gameGroup = GROUP_UNKNOWN;
+            return 0;
+        }
+
+        config.gameReleaseYear = n2GetGame() == N2_GAME_WMMT3DX_PLUS ? (char *)"2010" : (char *)"";
+        config.gameNativeResolutions = (char *)"640x480";
         config.gameType = DRIVING;
         config.width = 640;
         config.height = 480;
         config.gameGroup = GROUP_WMMT3;
-        config.region = JP;
         return 0;
     }
 #endif

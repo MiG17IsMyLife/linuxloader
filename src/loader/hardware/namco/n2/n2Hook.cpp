@@ -34,6 +34,17 @@ extern "C" int n2HookSymbol(const char *name, void *replacement)
     return 1;
 }
 
+extern "C" int n2ArmHooks(void)
+{
+    MH_STATUS status = MH_EnableHook(MH_ALL_HOOKS);
+    if (status != MH_OK)
+    {
+        log_error("Namco N2: failed to arm hooks (MinHook status %d)", (int)status);
+        return 0;
+    }
+    return 1;
+}
+
 extern "C" int n2HookSymbolWithOriginal(const char *name, void *replacement, void **original)
 {
     void *target = n2ResolveSymbol(name);

@@ -10,6 +10,8 @@
 #include "elfLoader/segaapiBridge.hpp"
 #include "elfLoader/gccBridge.hpp"
 #include "elfLoader/ipcBridge.hpp"
+#include "elfLoader/posixCompatBridge.hpp"
+#include "elfLoader/sdl12Bridge.hpp"
 #include "elfLoader/elfLoader.hpp"
 #include "elfLoader/filesystemBridge.hpp"
 #include "elfLoader/libcBridge.hpp"
@@ -71,6 +73,8 @@ void initBridges()
     GccBridge::initBridges();
     NetworkBridge::initBridges();
     IpcBridge::initBridges();
+    PosixCompatBridge::initBridges();
+    Sdl12Bridge::initBridges();
     SegaApiBridge::initBridges();
     Alsa2SdlBridge::initBridges();
     RegexBridge::initBridges();
@@ -159,7 +163,7 @@ int main(int argc, char *argv[], char *envp[])
     bool initializedBeforeElfConstructors = false;
 
     if (!loader.Load(elfPath, [&]() {
-            if (!n2DetectGame())
+            if (!n2DetectGame(elfPath))
                 return true;
 
             uint8_t *baseAddr = (uint8_t *)loader.GetBaseAddress();

@@ -457,7 +457,19 @@ namespace LibcBridge
 
     char *bridgeSetlocale(int category, const char *locale)
     {
-        return setlocale(category, locale);
+        constexpr int linuxLcAll = 6;
+        static char cLocale[] = "C";
+
+        if (category < 0 || category > linuxLcAll)
+        {
+            log_debug("setlocale: unknown category %d", category);
+            return nullptr;
+        }
+
+        if (locale && *locale && strcmp(locale, "C") != 0 && strcmp(locale, "POSIX") != 0)
+            log_debug("setlocale: \"%s\" is not available; staying in the C locale", locale);
+
+        return cLocale;
     }
 
     struct FakeLocaleStruct
@@ -893,8 +905,11 @@ namespace LibcBridge
     int bridgeUsleep(uint32_t microseconds)
     {
         log_trace("Intercepted usleep");
-        Sleep(microseconds / 1000);
-        return 0;
+
+        struct timespec request;
+        request.tv_sec = microseconds / 1000000u;
+        request.tv_nsec = (long)(microseconds % 1000000u) * 1000L;
+        return bridgeNanosleep(&request, nullptr);
     }
 
     int bridgeSleep(uint32_t seconds)

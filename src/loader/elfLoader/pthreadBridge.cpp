@@ -76,6 +76,17 @@ namespace PthreadBridge
         MAP("pthread_self", PthreadEmu::pthreadSelf);
         MAP("pthread_equal", PthreadEmu::pthreadEqual);
         MAP("pthread_cancel", PthreadEmu::pthreadCancel);
+        MAP("pthread_setcancelstate", PthreadEmu::pthreadSetcancelstate);
+        MAP("pthread_setcanceltype", PthreadEmu::pthreadSetcanceltype);
+        MAP("pthread_testcancel", PthreadEmu::pthreadTestcancel);
+
+        MAP("_pthread_cleanup_push", LibcBridge::bridgeStubSuccess);
+        MAP("_pthread_cleanup_pop", LibcBridge::bridgeStubSuccess);
+        MAP("_pthread_cleanup_push_defer", LibcBridge::bridgeStubSuccess);
+        MAP("_pthread_cleanup_pop_restore", LibcBridge::bridgeStubSuccess);
+
+        // The pre-POSIX name for pthread_mutexattr_settype.
+        MAP("pthread_mutexattr_setkind_np", PthreadEmu::pthreadMutexattrSettype);
 
         // Thread attributes
         MAP("pthread_attr_init", PthreadEmu::pthreadAttrInit);

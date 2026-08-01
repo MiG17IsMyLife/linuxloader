@@ -368,6 +368,11 @@ bool ElfLoader::LoadDependencies()
 
         SymbolResolver::GetInstance().RegisterLibrary("libopenal.so.0", "openal32.dll");
         SymbolResolver::GetInstance().RegisterLibrary("libopenal.so.1", "openal32.dll");
+
+        SymbolResolver::GetInstance().RegisterLibrary("libSDL-1.2.so.0", "INTERNAL");
+        SymbolResolver::GetInstance().RegisterLibrary("libSDL.so", "INTERNAL");
+        SymbolResolver::GetInstance().RegisterLibrary("libSDL.so.0", "INTERNAL");
+
         SymbolResolver::GetInstance().RegisterLibrary("libCg.so", "Cg.dll");
         SymbolResolver::GetInstance().RegisterLibrary("libCgGL.so", "CgGL.dll");
 
@@ -777,6 +782,13 @@ void *ElfLoader::FindExportedSymbol(const std::string &name) const
 
 bool ElfLoader::RunInit()
 {
+    if (m_Initialized)
+    {
+        log_debug("Initialization already run for shared object: %s", m_Path.c_str());
+        return true;
+    }
+    m_Initialized = true;
+
     log_info("Running initialization for shared object: %s", m_Path.c_str());
 
     for (Elf_Half i = 0; i < m_Elfio->sections.size(); ++i)

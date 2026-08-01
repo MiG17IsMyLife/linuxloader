@@ -21,6 +21,7 @@
 #include "blitStretching.h"
 #include "../config/config.h"
 #include "crossHair.h"
+#include "fpsLimiter.h"
 #include "customCursor.h"
 #include "../input/sdlInput.h"
 #include "../hardware/lindbergh/jvs.h"
@@ -400,4 +401,22 @@ void pollEvents()
         updateCombinedAxes();
         processChangedActions();
     }
+}
+
+void showFpsInWindowTitle(const char *name)
+{
+    static int framesSinceTitle = 0;
+    char windowTitle[160];
+    SDL_Window *window = getSDLWindow();
+
+    /* Counts the frame it is called on, so it runs every present. */
+    double fps = calculateFps();
+
+    if (!window || ++framesSinceTitle < 30)
+        return;
+
+    framesSinceTitle = 0;
+    snprintf(windowTitle, sizeof(windowTitle), "%s - FPS: %.2f",
+             name && *name ? name : "linuxloader", fps);
+    SDL_SetWindowTitle(window, windowTitle);
 }

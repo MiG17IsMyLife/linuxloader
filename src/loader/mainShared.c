@@ -234,6 +234,28 @@ bool fileExists(const char *path)
     return stat(path, &buffer) == 0;
 }
 
+bool gameProgramExists(const char *commandLine)
+{
+    char program[MAX_PATH_LENGTH];
+    const char *space = NULL;
+    size_t length = 0;
+
+    if (!commandLine)
+        return false;
+
+    space = strchr(commandLine, ' ');
+    if (!space)
+        return fileExists(commandLine);
+
+    length = (size_t)(space - commandLine);
+    if (length >= sizeof(program))
+        return false;
+
+    memcpy(program, commandLine, length);
+    program[length] = '\0';
+    return fileExists(program);
+}
+
 char *myBasename(char *path)
 {
     if (path == NULL || *path == '\0')
@@ -1060,7 +1082,7 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
         if (commandOnlyElf)
         {
             strncpy(gameELF, forcedGamePath, MAX_PATH_LENGTH);
-            if (!fileExists(gameELF))
+            if (!gameProgramExists(gameELF))
             {
                 log_fatal("Program '%s' not found in %s\n", gameELF, passedGamePath);
                 return EXIT_FAILURE;
@@ -1087,7 +1109,7 @@ int parseArgs(int argc, char *argv[], char *command, char *originalDir, char *ga
     else if (commandOnlyElf)
     {
         strncpy(gameELF, forcedGamePath, MAX_PATH_LENGTH);
-        if (!fileExists(gameELF))
+        if (!gameProgramExists(gameELF))
         {
             log_fatal("'%s' not found in current directory\n", gameELF);
             return EXIT_FAILURE;

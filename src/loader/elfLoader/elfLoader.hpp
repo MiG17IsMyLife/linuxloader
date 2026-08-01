@@ -4,9 +4,6 @@
 #include <cstdint>
 #include <functional>
 
-// Forward declarations to avoid exposing ELFIO directly in headers if possible,
-// but since we'll likely use it heavily, including ELFIO might be easier.
-// For now, we keep it simple.
 namespace ELFIO
 {
     class elfio;
@@ -18,9 +15,6 @@ class ElfLoader
     ElfLoader();
     ~ElfLoader();
 
-    // Pre-reserve the ELF's fixed virtual address range so that DLLs
-    // loaded later (e.g. msys-2.0.dll) cannot claim the same region.
-    // Must be called before any LoadLibraryA that might conflict.
     static void PreReserveAddressSpace(const std::string &path);
 
     // Loads the ELF file into memory and resolves dependencies
@@ -48,9 +42,9 @@ class ElfLoader
     bool ProcessRelocations();
     bool RunInit();
 
-  private:
-    // Register all collected .eh_frame sections with the MinGW DW2 unwinder.
     static void RegisterAllEhFrames();
+
+  private:
 
     ELFIO::elfio *m_Elfio;
     bool m_IsSharedObject = false;

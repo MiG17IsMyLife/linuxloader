@@ -70,16 +70,6 @@ extern char vf5StageNameAbbr[5];
 
 extern bool mj4ResponseReady;
 
-/*
- * The games treat /tmp (and /var/tmp) as scratch storage that the cabinet
- * mounts per boot; the loader serves it from a "tmp" directory next to the
- * game instead.  sharedOpen() has always applied this redirect, so every other
- * filesystem entry point has to agree - otherwise a file created through
- * open() lands in ./tmp while fopen()/rename()/remove() look for it at the
- * root of the current drive and silently fail.  That mismatch is why WMMT3
- * could read /tmp/data/etc/testmode.lua but never replace it, losing every
- * test-mode setting on exit.
- */
 const char *redirectTempPath(const char *path)
 {
     if (!path)
@@ -90,6 +80,25 @@ const char *redirectTempPath(const char *path)
 
     if (strncmp(path, "/tmp", 4) == 0)
         return path + 1;
+
+    if (strncmp(path, "../../../freespace", 18) == 0)
+        return path + 9;
+
+    static _Thread_local char rewritten[4][MAX_PATH_LENGTH];
+    static _Thread_local unsigned int next = 0;
+
+    const char *boardPrefix = NULL;
+    if (strncmp(path, "/app/mnt/contents2/", 19) == 0)
+        boardPrefix = path + 18; // keep the separator
+    else if (strcmp(path, "/etc/axiscpp.conf") == 0)
+        boardPrefix = path;
+
+    if (boardPrefix)
+    {
+        char *slot = rewritten[next++ % 4];
+        snprintf(slot, MAX_PATH_LENGTH, "../..%s", boardPrefix);
+        return slot;
+    }
 
     return path;
 }

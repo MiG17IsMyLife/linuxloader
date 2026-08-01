@@ -14,6 +14,7 @@ SDL_GLContext getSDLContext();
 int makeSDLCurrent(SDL_Window *win, SDL_GLContext ctx);
 void sdlQuit();
 void pollEvents();
+void showFpsInWindowTitle(const char *name);
 
 #ifdef __cplusplus
 }

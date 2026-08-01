@@ -255,12 +255,15 @@ int sharedIopl(int level)
 void *sharedDlopen(const char *filename, int flags)
 {
 #ifdef _WIN32
+    void *handle = NULL;
+
     if (!filename)
         return (void *)-1; // RTLD_DEFAULT handle
 
     bridgeLoadNeededLibrary(filename);
 
-    return (void *)0xDEADBEEF;
+    handle = bridgeLibraryHandle(filename);
+    return handle ? handle : (void *)0xDEADBEEF;
 #else
     return dlopen(filename, flags);
 #endif
@@ -269,8 +272,11 @@ void *sharedDlopen(const char *filename, int flags)
 void *sharedDlsym(void *handle, const char *symbol)
 {
 #ifdef _WIN32
-    void *func = bridgeResolveSymbol(symbol);
-    return func;
+    void *func = bridgeResolveSymbolInModule(handle, symbol);
+    if (func)
+        return func;
+
+    return bridgeResolveSymbolOptional(symbol);
 #else
     return dlsym(handle, symbol);
 #endif

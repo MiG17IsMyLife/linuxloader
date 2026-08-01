@@ -1,6 +1,9 @@
 #include <glad/gl.h>
 #include <SDL3/SDL.h>
+#include <windows.h>
 #include <string.h>
+#include <string>
+#include <unordered_map>
 #include "glHooks.hpp"
 #include "../graphics/shaderPatches.h"
 #include "../patching/patchResolution.h"
@@ -2017,6 +2020,58 @@ extern "C" void __attribute__((cdecl)) wrap_glGenerateMipmapEXT(GLenum target)
         glad_glGenerateMipmapEXT(target);
 }
 
+static void *cdeclAdapterFor(const char *procName, void *stdcallEntry)
+{
+    static std::unordered_map<std::string, void *> adapters;
+    static uint8_t *block = nullptr;
+    static size_t used = 0;
+
+    auto existing = adapters.find(procName);
+    if (existing != adapters.end())
+        return existing->second;
+
+    static const uint8_t code[] = {
+        0x55,                         // push %ebp
+        0x89, 0xE5,                   // mov  %esp,%ebp
+        0x56,                         // push %esi
+        0x57,                         // push %edi
+        0x83, 0xEC, 0x40,             // sub  $0x40,%esp
+        0x8D, 0x75, 0x08,             // lea  0x8(%ebp),%esi   - the caller's arguments
+        0x89, 0xE7,                   // mov  %esp,%edi
+        0xB9, 0x10, 0x00, 0x00, 0x00, // mov  $16,%ecx         - 64 bytes, 16 dwords
+        0xFC,                         // cld
+        0xF3, 0xA5,                   // rep movsl
+        0xB8, 0x00, 0x00, 0x00, 0x00, // mov  $entry,%eax      - patched below
+        0xFF, 0xD0,                   // call *%eax
+        0x8D, 0x65, 0xF8,             // lea  -0x8(%ebp),%esp  - undo whatever it popped
+        0x5F,                         // pop  %edi
+        0x5E,                         // pop  %esi
+        0x5D,                         // pop  %ebp
+        0xC3,                         // ret                   - __cdecl: the caller cleans up
+    };
+    constexpr size_t entryOffset = 22; // the imm32 of "mov $entry,%eax"
+    constexpr size_t blockSize = 64 * 1024;
+
+    if (!block || used + sizeof(code) > blockSize)
+    {
+        block = static_cast<uint8_t *>(
+            VirtualAlloc(nullptr, blockSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+        used = 0;
+        if (!block)
+            return stdcallEntry; // out of memory: no adapter is better than no entry point
+    }
+
+    uint8_t *adapter = block + used;
+    used += sizeof(code);
+
+    memcpy(adapter, code, sizeof(code));
+    memcpy(adapter + entryOffset, &stdcallEntry, sizeof(stdcallEntry));
+    FlushInstructionCache(GetCurrentProcess(), adapter, sizeof(code));
+
+    adapters[procName] = adapter;
+    return adapter;
+}
+
 // The interceptor router mapping string names to our safe __cdecl wrappers
 void *GLHooks_GetProcAddress(const char *procName)
 {
@@ -2706,7 +2761,7 @@ void *GLHooks_GetProcAddress(const char *procName)
         
     void *proc = (void *)SDL_GL_GetProcAddress(procName);
     if (proc)
-        return proc;
+        return cdeclAdapterFor(procName, proc);
 
     return NULL;
 }

@@ -20,6 +20,10 @@ void *n2ResolveSymbol(const char *name);
 int n2HookSymbol(const char *name, void *replacement);
 int n2HookSymbolWithOriginal(const char *name, void *replacement, void **original);
 
+// Activates every hook created so far.  Only needed by callers that install
+// after the loader's start-up arming pass, such as hooks on a dlopened module.
+int n2ArmHooks(void);
+
 #ifdef __cplusplus
 }
 #endif
