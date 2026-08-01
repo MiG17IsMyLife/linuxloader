@@ -43,11 +43,13 @@ static int detectGame(uint32_t elf_crc)
         config.gameDVP = (char *)"Namco System N2";
         config.gameID = (char *)n2GetGameId();
         config.gameStatus = WORKING;
-        config.jvsIOType = SEGA_TYPE_3;
+        config.jvsIOType = NAMCO_N2_TYPE;
         config.region = JP;
 
         if (n2GetGame() == N2_GAME_CSNEO)
         {
+            // Counter-Strike Neo has no JVIO board of its own to answer to.
+            config.jvsIOType = SEGA_TYPE_3;
             config.gameReleaseYear = (char *)"2005";
             config.gameNativeResolutions = (char *)"1024x768";
             config.gameType = SHOOTING;
@@ -158,6 +160,22 @@ void setDefaultValues(EmulatorConfig *cfg)
     strcpy(cfg->n2DongleId2, "");
     cfg->n2DebugMode = 0;
     cfg->n2ForceFeedbackEnabled = 0;
+    // The wheel swings its whole electrical range; the pedals stay inside the
+    // window clInputDeviceJamma calibrates them in.
+    cfg->n2SteeringRawMin = 0;
+    cfg->n2SteeringRawMax = 65535;
+    cfg->n2AcceleratorRawMin = 35000;
+    cfg->n2AcceleratorRawMax = 55480;
+    cfg->n2BrakeRawMin = 29000;
+    cfg->n2BrakeRawMax = 49480;
+    strcpy(cfg->n2JvsIoName, "namco ltd.;JYU-PCB;Ver1.00;JPN,Multipurpose");
+    cfg->n2JvsPlayers = 2;
+    cfg->n2JvsSwitches = 24;
+    cfg->n2JvsCoins = 2;
+    cfg->n2JvsAnalogueIn = 8;
+    cfg->n2JvsGpo = 6;
+    cfg->n2JvsAnalogueOut = 4;
+    cfg->n2JvsGpi = 16;
     // The cabinet reports E51 whenever the reader does not answer, so the
     // loader tries the YaCardEmu pipe by default.
     cfg->n2YaCardEmuEnabled = 1;
@@ -362,6 +380,27 @@ void applyIniConfig(EmulatorConfig *config, const IniConfig *ini)
     config->n2DebugMode = getInt(ini, "NamcoN2", "DEBUG_MODE", config->n2DebugMode);
     config->n2ForceFeedbackEnabled =
         getInt(ini, "NamcoN2", "FFB_ENABLED", config->n2ForceFeedbackEnabled);
+    config->n2SteeringRawMin =
+        getInt(ini, "NamcoN2", "STEERING_RAW_MIN", config->n2SteeringRawMin);
+    config->n2SteeringRawMax =
+        getInt(ini, "NamcoN2", "STEERING_RAW_MAX", config->n2SteeringRawMax);
+    config->n2AcceleratorRawMin =
+        getInt(ini, "NamcoN2", "ACCELERATOR_RAW_MIN", config->n2AcceleratorRawMin);
+    config->n2AcceleratorRawMax =
+        getInt(ini, "NamcoN2", "ACCELERATOR_RAW_MAX", config->n2AcceleratorRawMax);
+    config->n2BrakeRawMin = getInt(ini, "NamcoN2", "BRAKE_RAW_MIN", config->n2BrakeRawMin);
+    config->n2BrakeRawMax = getInt(ini, "NamcoN2", "BRAKE_RAW_MAX", config->n2BrakeRawMax);
+
+    getString(ini, "NamcoN2", "JVS_IO_NAME", config->n2JvsIoName, sizeof(config->n2JvsIoName));
+    config->n2JvsPlayers = getInt(ini, "NamcoN2", "JVS_PLAYERS", config->n2JvsPlayers);
+    config->n2JvsSwitches = getInt(ini, "NamcoN2", "JVS_SWITCHES", config->n2JvsSwitches);
+    config->n2JvsCoins = getInt(ini, "NamcoN2", "JVS_COINS", config->n2JvsCoins);
+    config->n2JvsAnalogueIn =
+        getInt(ini, "NamcoN2", "JVS_ANALOGUE_IN", config->n2JvsAnalogueIn);
+    config->n2JvsGpo = getInt(ini, "NamcoN2", "JVS_GPO", config->n2JvsGpo);
+    config->n2JvsAnalogueOut =
+        getInt(ini, "NamcoN2", "JVS_ANALOGUE_OUT", config->n2JvsAnalogueOut);
+    config->n2JvsGpi = getInt(ini, "NamcoN2", "JVS_GPI", config->n2JvsGpi);
     config->n2YaCardEmuEnabled =
         getInt(ini, "NamcoN2", "YACARDEMU_ENABLED", config->n2YaCardEmuEnabled);
     config->n2YaCardEmuAutoStart =

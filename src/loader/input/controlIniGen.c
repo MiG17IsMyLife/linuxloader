@@ -461,6 +461,7 @@ int createDefaultControlsIni(const char *fileName)
     iniSetValue(ini, "Config", "FLYING_X_DeadZone", "500");
     iniSetValue(ini, "Config", "FLYING_Y_DeadZone", "500");
     iniSetValue(ini, "Config", "Throttle_DeadZone", "500");
+    iniSetValue(ini, "Config", "ShifterGears", "6");
     iniSetValue(ini, "Config", "ShakeIncreaseRate", "1.0");
     iniSetValue(ini, "Config", "ShakeDecayRate", "0.95");
     iniSetValue(ini, "Config", "ShakeMinScreenFraction", "0.15");

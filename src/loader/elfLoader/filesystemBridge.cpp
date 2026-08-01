@@ -4,7 +4,10 @@
 #include "libcBridge.hpp"
 #include "networkBridge.hpp"
 #include "symbolResolver.hpp"
+#include "../graphics/sdlCalls.h"
 #include "../hardware/namco/n2/n2CardReader.h"
+#include "../hardware/namco/n2/n2Jvio.h"
+#include "../hardware/namco/n2/n2Kickback.h"
 #include "../log/log.h"
 #include <string>
 #include <windows.h>
@@ -32,6 +35,16 @@ namespace FileSystemBridge
             int descriptor = n2CardReaderOpen(path, flags);
             if (descriptor >= 0 || (path && strcmp(path, "/dev/ttyM2") == 0))
                 return descriptor;
+
+            // /dev/ttyM3 is the JVIO line, claimed for the Wangan titles only.
+            descriptor = n2JvioSerialOpen(path, flags);
+            if (descriptor >= 0)
+                return descriptor;
+
+            // /dev/ttyM1 is the steering board, on its own line rather than JVS.
+            descriptor = n2KickbackSerialOpen(path, flags);
+            if (descriptor >= 0)
+                return descriptor;
         }
 
         int mode = 0;
@@ -45,10 +58,27 @@ namespace FileSystemBridge
         return sharedOpen(path, flags, mode);
     }
 
+    /*
+     * Loading a course is a long stretch of reads with no frame presented in
+     * between, which is all Windows needs to call the window hung and put a
+     * ghost over it. Reads are where the game spends that time, so the message
+     * queue is drained from here; the call rate limits itself.
+     */
+    static size_t bridgeFread(void *buffer, size_t size, size_t count, FILE *stream)
+    {
+        keepWindowResponsive();
+        return sharedFread(buffer, size, count, stream);
+    }
+
     static ssize_t bridgeReadDescriptor(int fd, void *buffer, size_t count)
     {
+        keepWindowResponsive();
         if (n2CardReaderIsDescriptor(fd))
             return n2CardReaderRead(fd, buffer, count);
+        if (n2JvioSerialIsDescriptor(fd))
+            return n2JvioSerialRead(fd, buffer, count);
+        if (n2KickbackSerialIsDescriptor(fd))
+            return n2KickbackSerialRead(fd, buffer, count);
         if (NetworkBridge::isSocketDescriptor(fd))
             return NetworkBridge::bridgeSocketRead(fd, buffer, count);
         return sharedRead(fd, buffer, count);
@@ -58,6 +88,10 @@ namespace FileSystemBridge
     {
         if (n2CardReaderIsDescriptor(fd))
             return n2CardReaderWrite(fd, buffer, count);
+        if (n2JvioSerialIsDescriptor(fd))
+            return n2JvioSerialWrite(fd, buffer, count);
+        if (n2KickbackSerialIsDescriptor(fd))
+            return n2KickbackSerialWrite(fd, buffer, count);
         if (NetworkBridge::isSocketDescriptor(fd))
             return NetworkBridge::bridgeSocketWrite(fd, buffer, count);
         return sharedWrite(fd, buffer, count);
@@ -67,6 +101,10 @@ namespace FileSystemBridge
     {
         if (n2CardReaderIsDescriptor(fd))
             return n2CardReaderClose(fd);
+        if (n2JvioSerialIsDescriptor(fd))
+            return n2JvioSerialClose(fd);
+        if (n2KickbackSerialIsDescriptor(fd))
+            return n2KickbackSerialClose(fd);
         if (NetworkBridge::isSocketDescriptor(fd))
             return NetworkBridge::bridgeSocketClose(fd);
         return sharedClose(fd);
@@ -81,6 +119,10 @@ namespace FileSystemBridge
 
         if (n2CardReaderIsDescriptor(fd))
             return n2CardReaderIoctl(fd, request, argument);
+        if (n2JvioSerialIsDescriptor(fd))
+            return n2JvioSerialIoctl(fd, request, argument);
+        if (n2KickbackSerialIsDescriptor(fd))
+            return n2KickbackSerialIoctl(fd, request, argument);
         if (NetworkBridge::isSocketDescriptor(fd))
             return NetworkBridge::bridgeSocketIoctl(fd, request, argument);
         return sharedIoctl(fd, request, argument);
@@ -92,7 +134,7 @@ namespace FileSystemBridge
 
         // Standard I/O functions
         MAP("fopen", sharedFopen);
-        MAP("fread", sharedFread);
+        MAP("fread", bridgeFread);
         MAP("fwrite", bridgeFwrite);
         MAP("fseek", sharedFseek);
         MAP("ftell", sharedFtell);

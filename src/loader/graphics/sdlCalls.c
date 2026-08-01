@@ -100,6 +100,65 @@ int initSDL()
     return 0;
 }
 
+/*
+ * Windows decides a window has hung as soon as the thread that owns it stops
+ * taking messages for a few seconds, and puts a grey "Not Responding" ghost in
+ * its place.  Loading a course is one long stretch of work on that thread with
+ * no frame presented, so from the outside it looks hung even though it is
+ * making progress the whole time.
+ *
+ * Two things are needed.  Ghosting is turned off so the window keeps showing
+ * what it last drew instead of being replaced, and the message queue is drained
+ * from the loader's file paths, which the game is going through constantly
+ * while it loads.  Only the thread that owns the window may do the latter, and
+ * only every so often, so a load that reads thousands of files does not pay for
+ * a message pump each time.
+ */
+#define WINDOW_PUMP_INTERVAL_MS 100
+
+static SDL_ThreadID g_windowThread = 0;
+static Uint64 g_lastPumpTicks = 0;
+
+static void disableWindowGhosting(void)
+{
+#if defined(_WIN32) || defined(__MINGW32__)
+    /*
+     * Loaded through SDL rather than windows.h, which does not sit well with
+     * the GL headers this file already pulls in.  user32 is resident for the
+     * window's sake anyway, so the handle is simply left open.
+     */
+    SDL_SharedObject *user32 = SDL_LoadObject("user32.dll");
+    if (!user32)
+        return;
+
+    void (*disableGhosting)(void) =
+        (void (*)(void))SDL_LoadFunction(user32, "DisableProcessWindowsGhosting");
+    if (disableGhosting)
+        disableGhosting();
+#endif
+}
+
+void keepWindowResponsive(void)
+{
+    if (!g_windowThread)
+        return;
+
+    const Uint64 now = SDL_GetTicks();
+    if (now - g_lastPumpTicks < WINDOW_PUMP_INTERVAL_MS)
+        return;
+
+    if (SDL_GetCurrentThreadID() != g_windowThread)
+        return;
+
+    g_lastPumpTicks = now;
+    /*
+     * Pumped but deliberately not dispatched: this runs in the middle of the
+     * game's own loading, and acting on a fullscreen toggle or a quit there is
+     * a good deal riskier than letting the events wait for the next pollEvents.
+     */
+    SDL_PumpEvents();
+}
+
 void startSDL()
 {
     creatingWindow = true;
@@ -142,6 +201,10 @@ void startSDL()
 
     if (g_SdlWindow)
     {
+        // Whoever created the window is the only thread allowed to pump for it.
+        g_windowThread = SDL_GetCurrentThreadID();
+        disableWindowGhosting();
+
 #ifdef __linux__
         SDL_IOStream *io = SDL_IOFromConstMem(icon256x256, sizeof(icon256x256));
         if (io)
@@ -316,6 +379,7 @@ void sdlQuit()
 void pollEvents()
 {
     SDL_Event event;
+    g_lastPumpTicks = SDL_GetTicks();
     while (SDL_PollEvent(&event))
     {
 #ifdef __linux__

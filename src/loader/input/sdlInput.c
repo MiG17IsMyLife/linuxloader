@@ -39,6 +39,12 @@ float gLastGunNormY[MAX_ENTITIES];
 int gLastGunXDir[MAX_ENTITIES];
 int gLastGunYDir[MAX_ENTITIES];
 float gShakeValue[MAX_ENTITIES];
+/*
+ * How many gears the sequential GearUp/GearDown bindings walk through. The
+ * WMMT3 cabinet's shifter is a six speed and only six positions have switch
+ * patterns, so anything above that is capped where it is used.
+ */
+int gShifterGears = 6;
 float gShakeIncreaseRate = 10.0f;
 float gShakeDecayRate = 0.95f;
 float gShakeMinScreenFraction = 0.15f;
@@ -585,13 +591,27 @@ void remapPerGame()
     if (gGrp == GROUP_WMMT3)
     {
         /*
-         * Namco N2 uses the common driving profile, but its two cabinet
-         * buttons are regular JVS buttons rather than directions.
+         * These are the switch positions the cabinet's JVIO board actually
+         * reports, so the JVS state is already wire-correct and no separate
+         * translation is needed on the way to the game.  The four shifter
+         * switches sit in the second switch byte rather than on the direction
+         * bits, and VIEW and BGM are the last two buttons of that byte.
+         *
          * GearUp/GearDown intentionally remain on PLAYER_2 so existing
-         * Lindbergh controls.ini files and generated defaults keep working.
+         * Lindbergh controls.ini files and generated defaults keep working;
+         * they drive the sequential shifter, which is synthesised onto the
+         * same four switches.
          */
-        gJvsMap[PLAYER_1][LA_ViewChange] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_1};
-        gJvsMap[PLAYER_1][LA_MusicChange] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_2};
+        gJvsMap[PLAYER_1][LA_Up] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_3};
+        gJvsMap[PLAYER_1][LA_Down] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_4};
+        gJvsMap[PLAYER_1][LA_Left] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_5};
+        gJvsMap[PLAYER_1][LA_Right] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_6};
+        gJvsMap[PLAYER_1][LA_ViewChange] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_9};
+        gJvsMap[PLAYER_1][LA_MusicChange] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_10};
+
+        // The cabinet has no separate start switch; the panel button the game
+        // reads as start is wired to the service line.
+        gJvsMap[PLAYER_1][LA_Start] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_SERVICE};
 
         /*
          * The DRIVING default puts CardInsert on PLAYER_1 BUTTON_UP, which on
@@ -1263,6 +1283,11 @@ int loadProfileFromIni(const IniSection *section)
  * This now includes loading saved controller GUIDs for player mapping.
  * @param ini Pointer to the loaded IniConfig.
  */
+int getShifterGears(void)
+{
+    return gShifterGears;
+}
+
 void loadGlobalConfig(const IniConfig *ini)
 {
     const IniSection *configSection = iniGetSection(ini, "Config");
@@ -1369,6 +1394,11 @@ void loadGlobalConfig(const IniConfig *ini)
                             break;
                         }
                     }
+                }
+                else if (strcmp(key, "ShifterGears") == 0)
+                {
+                    gShifterGears = atoi(value);
+                    printf("  Set ShifterGears to %d\n", gShifterGears);
                 }
                 else if (strcmp(key, "ShakeIncreaseRate") == 0)
                 {

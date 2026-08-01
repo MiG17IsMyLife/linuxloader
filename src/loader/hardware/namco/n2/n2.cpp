@@ -3,6 +3,7 @@
 #include "n2CardReader.h"
 #include "n2Host.h"
 #include "n2Hook.h"
+#include "n2Jvio.h"
 #include "n2SteeringIo.h"
 
 #if defined(_WIN32) || defined(__MINGW32__)
@@ -62,7 +63,6 @@ struct AdmWindow
 
 N2Game detectedGame = N2_GAME_NONE;
 std::string detectedRevision;
-uint8_t *n2Jvio = nullptr;
 uint32_t nextHaspHandle = 1;
 constexpr int n2HaspDataSize = 0xD40;
 constexpr char defaultN2DongleId[] = "000001000001";
@@ -333,25 +333,12 @@ int haspWrite(int, int, int offset, int length, const uint8_t *buffer)
     return 0;
 }
 
-uint32_t gearBits(int gear)
-{
-    switch (gear)
-    {
-        case 1: return 0x01 | 0x04;
-        case 2: return 0x01 | 0x08;
-        case 3: return 0x04;
-        case 4: return 0x08;
-        case 5: return 0x02 | 0x04;
-        case 6: return 0x02 | 0x08;
-        default: return 0;
-    }
-}
-
 uint16_t n2GearSwitches(int gear)
 {
     /*
      * The WMMT3 shifter is wired to four switches in the first JVS player
-     * word. These are the source masks used by the game's JAMMA adapter.
+     * word - BUTTON_3 through BUTTON_6, i.e. the top nibble of the second
+     * switch byte. These are the masks the cabinet's JVIO board reports.
      */
     switch (gear)
     {
@@ -370,17 +357,38 @@ float clamp01(float value)
     return std::max(0.0f, std::min(1.0f, value));
 }
 
-float normalizedAnalogue(const JVSIO *io, JVSInput channel)
+/*
+ * What the cabinet's potentiometers put on the wire.
+ *
+ * The pedals rest at a fixed count and swing across the window the game
+ * calibrates them in - clInputDeviceJamma::m_left_pedal_std and _w, and the
+ * right pedal pair - so a fully pressed pedal lands exactly on the far edge of
+ * that window.
+ *
+ * The wheel has considerably more electrical travel than its window, which is
+ * what the steering initialisation screen in the test menu exists to measure:
+ * it reports the raw count divided by 64, and a real cabinet reads about +/-520
+ * there rather than the +/-384 that m_w alone would give.  So the wheel is
+ * handed the whole 16 bit range and the game's own calibration decides where
+ * full lock sits.
+ */
+uint16_t calibratedRaw(float normalized, int rawMin, int rawMax)
 {
-    if (!io || io->analogueMax <= 0)
-        return channel == ANALOGUE_1 ? 0.5f : 0.0f;
-    return clamp01(static_cast<float>(io->state.analogueChannel[channel]) /
-                   static_cast<float>(io->analogueMax));
-}
+    rawMin = std::max(0, std::min(rawMin, 65535));
+    rawMax = std::max(0, std::min(rawMax, 65535));
+    // A reversed or collapsed pair would silently pin the axis, so the ends are
+    // put back in order rather than trusted as configured.
+    if (rawMax < rawMin)
+        std::swap(rawMin, rawMax);
 
-uint16_t calibratedRaw(float normalized, uint16_t offset, uint16_t range)
-{
-    const float raw = static_cast<float>(offset) + clamp01(normalized) * static_cast<float>(range);
+    /*
+     * Rounded rather than truncated. A pedal that stops a hair short of 1.0 -
+     * which is all it takes for the axis to report 65534 instead of 65535 -
+     * otherwise reads one count low across its whole travel, and the test
+     * screen shows 319 where the cabinet shows 320.
+     */
+    const float raw = static_cast<float>(rawMin) +
+                      clamp01(normalized) * static_cast<float>(rawMax - rawMin) + 0.5f;
     return static_cast<uint16_t>(std::min(raw, 65535.0f));
 }
 
@@ -388,127 +396,66 @@ bool switchActive(const JVSIO *io, JVSPlayer player, JVSInput input)
 {
     return io && (io->state.inputSwitch[player] & input) != 0;
 }
+} // namespace
 
-void handleJammaEvents(uint8_t *device)
+/*
+ * Advances the six position shifter from the sequential GearUp/GearDown
+ * bindings and reports the selected gear, or 0 while the four raw shifter
+ * switches are being thrown directly.  Both the direct-write path and the JVS
+ * bridge drive the same state machine, so a cabinet cannot end up with one
+ * gear on the wire and another in the game.
+ *
+ * GearUp/GearDown live on PLAYER_2 because that is where initJvsMappings()
+ * puts them for DRIVING titles.
+ */
+extern "C" int n2UpdateShifter(void)
 {
-    if (!device)
-        return;
-
-    pollEvents();
-
-    /*
-     * pollEvents() feeds the shared SDL/controls.ini path into the existing
-     * JVS state. N2 only translates that state into Namco's memory layout, so
-     * every switch below is whatever controls.ini bound to the corresponding
-     * logical action, exactly like a Lindbergh driving game.
-     *
-     * GearUp/GearDown live on PLAYER_2 because that is where initJvsMappings()
-     * puts them for DRIVING titles.
-     */
     JVSIO *io = getJVSIO();
+    // Only six shifter positions have switch patterns, so a controls.ini asking
+    // for more gears than the cabinet has is capped rather than refused.
+    const int topGear = std::max(1, std::min(getShifterGears(), 6));
+
     const bool gearUp = switchActive(io, PLAYER_2, BUTTON_UP);
     const bool gearDown = switchActive(io, PLAYER_2, BUTTON_DOWN);
-    if (gearUp && !previousGearUp && currentGear < 6)
+    if (gearUp && !previousGearUp && currentGear < topGear)
         ++currentGear;
     if (gearDown && !previousGearDown && currentGear > 0)
         --currentGear;
     previousGearUp = gearUp;
     previousGearDown = gearDown;
 
-    const float steerNormalized = normalizedAnalogue(io, ANALOGUE_1);
-    const float steer = (steerNormalized - 0.5f) * 2.0f;
-    const float gas = normalizedAnalogue(io, ANALOGUE_2);
-    const float brake = normalizedAnalogue(io, ANALOGUE_3);
-    const bool test = switchActive(io, SYSTEM, BUTTON_TEST);
-    const bool service = switchActive(io, PLAYER_1, BUTTON_SERVICE);
-    const bool start = switchActive(io, PLAYER_1, BUTTON_START);
-    const bool view = switchActive(io, PLAYER_1, BUTTON_1);
-    const bool music = switchActive(io, PLAYER_1, BUTTON_2);
-    const bool shifterUp = switchActive(io, PLAYER_1, BUTTON_UP);
-    const bool shifterDown = switchActive(io, PLAYER_1, BUTTON_DOWN);
-    const bool shifterLeft = switchActive(io, PLAYER_1, BUTTON_LEFT);
-    const bool shifterRight = switchActive(io, PLAYER_1, BUTTON_RIGHT);
     const bool manualShifterSwitch =
-        shifterUp || shifterDown || shifterLeft || shifterRight;
-
-    uint32_t bits = gearBits(currentGear);
+        switchActive(io, PLAYER_1, BUTTON_3) || switchActive(io, PLAYER_1, BUTTON_4) ||
+        switchActive(io, PLAYER_1, BUTTON_5) || switchActive(io, PLAYER_1, BUTTON_6);
     if (manualShifterSwitch)
-    {
         currentGear = 0;
-        bits = 0;
-        if (shifterLeft)
-            bits |= 0x01;
-        if (shifterRight)
-            bits |= 0x02;
-        if (shifterUp)
-            bits |= 0x04;
-        if (shifterDown)
-            bits |= 0x08;
-    }
-    if (test)
-        bits |= 0x20000000;
-    if (service || start)
-        bits |= 0x80000000;
-    if (view)
-        bits |= 0x40;
-    if (music)
-        bits |= 0x80;
-    if (gas > 0.0f)
-        bits |= 0x10;
-    if (brake > 0.0f)
-        bits |= 0x20;
 
-    *reinterpret_cast<uint32_t *>(device + 0x24) = 0;
-    *reinterpret_cast<uint32_t *>(device + 0x08) = bits;
-    *reinterpret_cast<float *>(device + 0x20) = steer;
-    *reinterpret_cast<float *>(device + 0x30) = gas;
-    *reinterpret_cast<float *>(device + 0x34) = brake;
+    return currentGear;
+}
 
-    if (n2Jvio)
+extern "C" uint16_t n2GearSwitchBits(int gear)
+{
+    return n2GearSwitches(gear);
+}
+
+extern "C" uint16_t n2AnalogueCount(int channel, float normalized)
+{
+    const EmulatorConfig *config = getConfig();
+    switch (channel)
     {
-        uint16_t playerSwitches = n2GearSwitches(currentGear);
-        if (manualShifterSwitch)
-        {
-            playerSwitches = 0;
-            if (shifterLeft)
-                playerSwitches |= 0x20;
-            if (shifterRight)
-                playerSwitches |= 0x10;
-            if (shifterUp)
-                playerSwitches |= 0x80;
-            if (shifterDown)
-                playerSwitches |= 0x40;
-        }
-        if (view)
-            playerSwitches |= 0x02;
-        if (music)
-            playerSwitches |= 0x01;
-        if (service || start)
-            playerSwitches |= 0x4000;
-
-        *(n2Jvio + 0x104) = test ? 0x80 : 0x00;
-        *reinterpret_cast<uint16_t *>(n2Jvio + 0x108) = playerSwitches;
-
-        /*
-         * These are the live calibration values used by W3P100-1-NA-DAT0-B02:
-         * steering center/range, accelerator rest/range, and brake rest/range.
-         */
-        *reinterpret_cast<uint16_t *>(n2Jvio + 0x1A8) =
-            calibratedRaw(steerNormalized, 0x197C, 0xC000);
-        *reinterpret_cast<uint16_t *>(n2Jvio + 0x1AA) =
-            calibratedRaw(gas, 0x88B8, 0x5000);
-        *reinterpret_cast<uint16_t *>(n2Jvio + 0x1AC) =
-            calibratedRaw(brake, 0x7148, 0x5000);
-
-        const int coinCount = io ? io->state.coinCount[PLAYER_1 - 1] : 0;
-        *reinterpret_cast<uint16_t *>(n2Jvio + 0x128) =
-            static_cast<uint16_t>(std::max(0, std::min(coinCount, 65535)));
-        *reinterpret_cast<uint16_t *>(n2Jvio + 0x12A) = 0;
-        *reinterpret_cast<uint16_t *>(n2Jvio + 0x12C) = 0;
-        *(n2Jvio + 0x12E) = 0;
+        case N2_ANALOGUE_STEERING:
+            return calibratedRaw(normalized, config->n2SteeringRawMin, config->n2SteeringRawMax);
+        case N2_ANALOGUE_ACCELERATOR:
+            return calibratedRaw(normalized, config->n2AcceleratorRawMin,
+                                 config->n2AcceleratorRawMax);
+        case N2_ANALOGUE_BRAKE:
+            return calibratedRaw(normalized, config->n2BrakeRawMin, config->n2BrakeRawMax);
+        default: return 0;
     }
 }
 
+namespace
+{
 const char *admGetString()
 {
     return "Linux Loader Namco N2";
@@ -1064,20 +1011,27 @@ extern "C" int n2InstallHooks(void)
         return 0;
     }
 
-    n2Jvio = static_cast<uint8_t *>(n2ResolveSymbol("n2jvio"));
-
-    n2HookSymbol("_ZN10clSystemN24initEb", reinterpret_cast<void *>(returnSuccess));
-    n2HookSymbol("_ZN10clSystemN212initSystemN2Ev", reinterpret_cast<void *>(returnSuccess));
     n2HookSymbol("_ZN18clInputDeviceJamma8checkUseEv", reinterpret_cast<void *>(returnSuccess));
-    n2HookSymbol("_ZN18clInputDeviceJamma12handleEventsEv", reinterpret_cast<void *>(handleJammaEvents));
     n2HookSymbol("_ZN16clInputDevicePad12handleEventsEv", reinterpret_cast<void *>(returnSuccess));
-    n2HookSymbol("n2JvioTxVsync", reinterpret_cast<void *>(returnSuccess));
-    n2HookSymbol("n2JvioAckTxVsync", reinterpret_cast<void *>(returnSuccess));
 
-    // WMMT3DX+ performs these cabinet checks before entering attract mode.
-    // SDL/JVS continues to provide steering and switch input after the check.
-    n2HookSymbol("_ZN10clKickback16requestSelfCheckEv", reinterpret_cast<void *>(returnHaspSuccess));
-    n2HookSymbol("_ZN10clKickback13waitSelfCheckEv", reinterpret_cast<void *>(returnSuccess));
+    /*
+     * The game runs its own JVS master: clSystemN2::initSystemN2() opens
+     * /dev/ttyM3, resets the bus, assigns an address, reads the function list,
+     * and n2JvioAckTxVsync() then decodes each frame's reply into n2jvio for
+     * clInputDeviceJamma::handleEvents(). The loader only has to answer as the
+     * I/O board, which n2Jvio.cpp does on top of the same JVS slave the
+     * Lindbergh games use.
+     */
+    log_info("Namco N2 JVS: answering the game's JVIO master on /dev/ttyM3");
+
+    /*
+     * The cabinet checks its steering board before entering attract mode.
+     * These used to be stubbed because the board was not emulated at all, but
+     * that also left clKickback unopened: it only puts a frame on the wire once
+     * its own initialisation has run, so stubbing the check kept /dev/ttyM1
+     * silent and the cabinet stuck on PCB ERROR. The real sequence runs now and
+     * n2Kickback.cpp answers it.
+     */
     n2SteeringIoInstallHooks();
 
     // Silence is not fatal, missing openal32.dll must not abort startup.

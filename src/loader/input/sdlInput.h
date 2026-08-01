@@ -242,6 +242,12 @@ void getLogicalActionString(const ControlBinding *binding, char *out_str, size_t
 bool needsPlayer(LogicalAction action, const char *name);
 int listSdlControllers(void);
 
+/*
+ * Gears the sequential GearUp/GearDown bindings walk through, from the
+ * ShifterGears key in controls.ini.
+ */
+int getShifterGears(void);
+
 #ifdef __cplusplus
 }
 #endif

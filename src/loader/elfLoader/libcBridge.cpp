@@ -10,9 +10,12 @@
 #include "../hardware/namco/n2/n2.h"
 #include "../hardware/namco/n2/n2CardReader.h"
 #include "../config/config.h"
+#include "../graphics/sdlCalls.h"
 #include <csignal>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
+#include <mutex>
 #include <cstdarg>
 #include <cstdio>
 #include <ctime>
@@ -178,6 +181,8 @@ namespace LibcBridge
         MAP("sigprocmask", bridgeSigprocmask);
         MAP("pthread_sigmask", bridgeSigprocmask);
         MAP("sigaction", bridgeSigaction);
+        MAP("setitimer", bridgeSetitimer);
+        MAP("sigwait", bridgeSigwait);
         MAP("alarm", bridgeStubSuccess);
         MAP("qsort", qsort);
         MAP("poll", bridgePoll);
@@ -915,12 +920,20 @@ namespace LibcBridge
     int bridgeSleep(uint32_t seconds)
     {
         log_trace("Intercepted sleep");
+        keepWindowResponsive();
         Sleep(seconds * 1000);
         return 0;
     }
 
     int bridgeNanosleep(const struct timespec *req, struct timespec *rem)
     {
+        /*
+         * A thread waiting out a load is usually doing it here.  If that is the
+         * one that owns the window, this is the only chance to keep its message
+         * queue moving, since no frame is being presented.
+         */
+        keepWindowResponsive();
+
         long long duration_ns = (long long)req->tv_sec * 1000000000LL + req->tv_nsec;
         if (duration_ns <= 0)
             return 0;
@@ -1272,6 +1285,121 @@ namespace LibcBridge
         {
             return -1;
         }
+        return 0;
+    }
+
+    /*
+     * Namco System N2 runs its I/O service off an interval timer:
+     * clSystemN2::execSystemN2() blocks SIGALRM and SIGTERM, arms a 20 ms
+     * ITIMER_REAL and then loops on sigwait(), driving one JVIO exchange per
+     * tick.  Windows has no POSIX signals, so the timer is kept here and
+     * sigwait() simply waits out the period and reports the alarm.
+     */
+    constexpr int linuxSigalrm = 14;
+
+    struct LinuxTimeval
+    {
+        int32_t seconds;
+        int32_t microseconds;
+    };
+
+    struct LinuxItimerval
+    {
+        LinuxTimeval interval;
+        LinuxTimeval value;
+    };
+
+    std::mutex intervalTimerMutex;
+    int64_t intervalTimerPeriodUs = 0;  // 0 while the timer is disarmed
+    int64_t intervalTimerNextUs = 0;
+
+    int64_t monotonicMicroseconds()
+    {
+        static LARGE_INTEGER frequency = []() {
+            LARGE_INTEGER value;
+            QueryPerformanceFrequency(&value);
+            return value;
+        }();
+
+        LARGE_INTEGER now;
+        QueryPerformanceCounter(&now);
+        return now.QuadPart * 1000000 / frequency.QuadPart;
+    }
+
+    int bridgeSetitimer(int which, const void *newValue, void *oldValue)
+    {
+        const LinuxItimerval *value = static_cast<const LinuxItimerval *>(newValue);
+        LinuxItimerval *old = static_cast<LinuxItimerval *>(oldValue);
+
+        std::lock_guard<std::mutex> lock(intervalTimerMutex);
+
+        if (old)
+        {
+            old->interval.seconds = static_cast<int32_t>(intervalTimerPeriodUs / 1000000);
+            old->interval.microseconds = static_cast<int32_t>(intervalTimerPeriodUs % 1000000);
+            old->value = old->interval;
+        }
+
+        if (!value)
+            return 0;
+
+        // Only ITIMER_REAL raises SIGALRM; the profiling timers have no caller.
+        if (which != 0)
+        {
+            log_debug("setitimer: ignoring timer %d", which);
+            return 0;
+        }
+
+        const int64_t first = static_cast<int64_t>(value->value.seconds) * 1000000 +
+                              value->value.microseconds;
+        const int64_t period = static_cast<int64_t>(value->interval.seconds) * 1000000 +
+                               value->interval.microseconds;
+
+        intervalTimerPeriodUs = period;
+        intervalTimerNextUs = first > 0 ? monotonicMicroseconds() + first : 0;
+        log_info("setitimer: %lld us interval timer armed", static_cast<long long>(period));
+        return 0;
+    }
+
+    int bridgeSigwait(const void *set, int *sig)
+    {
+        int64_t waitUntil = 0;
+        {
+            std::lock_guard<std::mutex> lock(intervalTimerMutex);
+            if (intervalTimerNextUs == 0)
+            {
+                /*
+                 * Nothing armed. The N2 service loop retries on any non-zero
+                 * return, so answering with an error would spin; pace it at
+                 * the cabinet's period instead and report the alarm anyway.
+                 */
+                intervalTimerPeriodUs = intervalTimerPeriodUs ? intervalTimerPeriodUs : 20000;
+                intervalTimerNextUs = monotonicMicroseconds() + intervalTimerPeriodUs;
+            }
+            waitUntil = intervalTimerNextUs;
+
+            /*
+             * Advance from the previous deadline rather than from now so the
+             * ticks do not drift, but resynchronise if the caller fell far
+             * enough behind that catching up would fire a burst of them.
+             */
+            const int64_t period = intervalTimerPeriodUs > 0 ? intervalTimerPeriodUs : 20000;
+            const int64_t now = monotonicMicroseconds();
+            intervalTimerNextUs =
+                waitUntil + period < now ? now + period : waitUntil + period;
+        }
+
+        for (;;)
+        {
+            const int64_t remaining = waitUntil - monotonicMicroseconds();
+            if (remaining <= 0)
+                break;
+            Sleep(static_cast<DWORD>(remaining / 1000 > 0 ? remaining / 1000 : 1));
+        }
+
+        (void)set;
+        if (sig)
+            *sig = linuxSigalrm;
         return 0;
     }
 

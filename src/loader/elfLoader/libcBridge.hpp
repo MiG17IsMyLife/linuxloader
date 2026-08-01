@@ -171,6 +171,12 @@ namespace LibcBridge
     int bridgeSigemptyset(void *set);
     int bridgeSigaddset(void *set, int signum);
     int bridgeSigprocmask(int how, const void *set, void *oldset);
+    /*
+     * Interval timer plus the blocking wait the Namco N2 I/O service loop is
+     * built on. Both take the Linux struct layouts as raw pointers.
+     */
+    int bridgeSetitimer(int which, const void *newValue, void *oldValue);
+    int bridgeSigwait(const void *set, int *sig);
     int bridgeSigaction(int signum, const struct linux_sigaction *act, struct linux_sigaction *oldact);
 
     // Wide char memory and string functions

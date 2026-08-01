@@ -40,6 +40,45 @@ extern char *configFolder;
 Controllers controllers = {0};
 #endif
 
+#if defined(_WIN32) || defined(__MINGW32__)
+/*
+ * A console renders bytes in one codepage, and the games do not agree on which.
+ * The Intrinsic Alchemy titles print their Japanese as UTF-8, while Counter
+ * Strike Neo - and anything Windows itself prints into the same console - uses
+ * the local ANSI codepage. Switching the console globally would only move the
+ * problem from one game to the other, so it is switched for the games that
+ * need it and put back the way it was afterwards.
+ */
+static UINT originalConsoleCodePage = 0;
+
+static void restoreConsoleCodePage(void)
+{
+    if (originalConsoleCodePage)
+        SetConsoleOutputCP(originalConsoleCodePage);
+}
+
+static void applyConsoleCodePage(void)
+{
+    if (gGrp != GROUP_WMMT3)
+        return;
+
+    const UINT current = GetConsoleOutputCP();
+    if (current == 0 || current == CP_UTF8)
+        return;
+
+    if (!SetConsoleOutputCP(CP_UTF8))
+    {
+        log_warn("Could not switch the console to UTF-8; this game's Japanese output will "
+                 "be garbled");
+        return;
+    }
+
+    originalConsoleCodePage = current;
+    atexit(restoreConsoleCodePage);
+    log_info("Console switched to UTF-8 for this game's output, was codepage %u", current);
+}
+#endif
+
 void initMain(char *configPath, char *controlsPath)
 {
 #ifdef __linux__
@@ -57,6 +96,10 @@ void initMain(char *configPath, char *controlsPath)
     gGrp = getConfig()->gameGroup;
     gWidth = getConfig()->width;
     gHeight = getConfig()->height;
+
+#if defined(_WIN32) || defined(__MINGW32__)
+    applyConsoleCodePage();
+#endif
 
     initFpsLimiter();
 
