@@ -12,8 +12,6 @@
 #define REAL_FUNC(name) name
 #endif
 
-extern DeviceType hooks[5];
-
 int myTcgetattr(int fd, struct termios *termios_p)
 {
     int (*_tcgetattr)(int fd, struct termios *termios_p) = REAL_FUNC(tcgetattr);

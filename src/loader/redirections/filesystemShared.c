@@ -51,7 +51,8 @@
 #define HOOK_FILE_NAME "NUL"
 #endif
 
-DeviceType hooks[5] = {NO_DEVICE, NO_DEVICE, NO_DEVICE, NO_DEVICE, NO_DEVICE};
+DeviceType hooks[DEVICE_TYPE_COUNT] = {
+    NO_DEVICE, NO_DEVICE, NO_DEVICE, NO_DEVICE, NO_DEVICE, NO_DEVICE};
 FILE *fileHooks[10] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
 FileTypes fileRead[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 char envpath[100];

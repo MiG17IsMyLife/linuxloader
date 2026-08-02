@@ -286,8 +286,12 @@ typedef struct
 {
     int enabled;
     int autoStart;
+    int diagnostics;
+    int apiPort;
     char executablePath[MAX_PATH_LENGTH];
     char pipeName[MAX_PATH_LENGTH];
+    char apiHost[MAX_PATH_LENGTH];
+    char cardName[MAX_PATH_LENGTH];
 } NamcoN2CardConfig;
 
 typedef struct

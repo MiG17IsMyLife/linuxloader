@@ -160,7 +160,11 @@ namespace LibcBridge
     int bridgeVfork(void);
     int bridgeDaemon(int nochdir, int noclose);
     int bridgeExeclp(const char *file, const char *arg, ...);
+    int bridgeRand(void);
+    long bridgeRandom(void);
     int bridgeRand_r(unsigned int *seedp);
+    void bridgeSrand(unsigned int seed);
+    void bridgeSrandom(unsigned int seed);
     int bridgeKill(int pid, int sig);
     int bridgeWait(int *wstatus);
     int bridgeRaise(int sig);

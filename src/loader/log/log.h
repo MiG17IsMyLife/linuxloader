@@ -23,14 +23,20 @@ enum { LOG_TRACE, // 0
        LOG_FATAL  // 6
 };
 
-// Macro to ease logging
-#define log_game(...)  logGeneric(LOG_GAME,  __FILE__, __LINE__, __VA_ARGS__)
-#define log_trace(...) logGeneric(LOG_TRACE, __FILE__, __LINE__, __VA_ARGS__)
-#define log_debug(...) logGeneric(LOG_DEBUG, __FILE__, __LINE__, __VA_ARGS__)
-#define log_info(...)  logGeneric(LOG_INFO,  __FILE__, __LINE__, __VA_ARGS__)
-#define log_warn(...)  logGeneric(LOG_WARN,  __FILE__, __LINE__, __VA_ARGS__)
-#define log_error(...) logGeneric(LOG_ERROR, __FILE__, __LINE__, __VA_ARGS__)
-#define log_fatal(...) logGeneric(LOG_FATAL, __FILE__, __LINE__, __VA_ARGS__)
+/*
+ * Check the level before entering the variadic logger.  Besides avoiding a
+ * function call on hot bridges, the conditional operator prevents evaluation
+ * of formatting arguments for disabled trace/debug messages.  Keep the macros
+ * expression-compatible because a few downstream users treat logging calls as
+ * returning an int.
+ */
+#define log_game(...)  (logIsEnabled(LOG_GAME)  ? logGeneric(LOG_GAME,  __FILE__, __LINE__, __VA_ARGS__) : 0)
+#define log_trace(...) (logIsEnabled(LOG_TRACE) ? logGeneric(LOG_TRACE, __FILE__, __LINE__, __VA_ARGS__) : 0)
+#define log_debug(...) (logIsEnabled(LOG_DEBUG) ? logGeneric(LOG_DEBUG, __FILE__, __LINE__, __VA_ARGS__) : 0)
+#define log_info(...)  (logIsEnabled(LOG_INFO)  ? logGeneric(LOG_INFO,  __FILE__, __LINE__, __VA_ARGS__) : 0)
+#define log_warn(...)  (logIsEnabled(LOG_WARN)  ? logGeneric(LOG_WARN,  __FILE__, __LINE__, __VA_ARGS__) : 0)
+#define log_error(...) (logIsEnabled(LOG_ERROR) ? logGeneric(LOG_ERROR, __FILE__, __LINE__, __VA_ARGS__) : 0)
+#define log_fatal(...) (logIsEnabled(LOG_FATAL) ? logGeneric(LOG_FATAL, __FILE__, __LINE__, __VA_ARGS__) : 0)
 
 // Macro to ease logging
 #define logVA_game(...)  logVA(LOG_GAME,  __FILE__, __LINE__, __VA_ARGS__)
@@ -41,6 +47,7 @@ extern "C" {
 
 int logGeneric(int level, const char *file, int line, const char *message, ...);
 int logVA(int level, const char *file, int line, const char *message, va_list args);
+int logIsEnabled(int level);
 int logSanityChecks(int level, const char *message);
 int logPrintHeader(FILE *stream, int level);
 int logPrintMessage(FILE *stream, LogFormattedMessage formattedMessage, int level);

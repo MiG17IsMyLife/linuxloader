@@ -4,14 +4,20 @@
 
 #include <atomic>
 #include <cerrno>
+#include <cstdio>
+#include <cstdlib>
 #include <cstdint>
 #include <cstring>
 #include <deque>
 #include <filesystem>
+#include <iomanip>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 
 #include "../../../config/config.h"
@@ -46,6 +52,12 @@ enum class LinkState
     Connected,
 };
 
+enum class ControlRequest
+{
+    Insert,
+    Eject,
+};
+
 std::mutex bufferMutex;
 std::deque<uint8_t> receiveQueue; // reader -> game
 std::deque<uint8_t> transmitQueue; // game -> reader
@@ -54,8 +66,231 @@ std::atomic<bool> workerRunning{false};
 std::atomic<bool> workerStopRequested{false};
 std::thread workerThread;
 std::once_flag workerOnce;
+std::once_flag controlWorkerOnce;
 bool launchAttempted = false;
 bool connectFailureReported = false;
+
+std::mutex controlMutex;
+std::deque<ControlRequest> controlQueue;
+std::atomic<bool> apiConnected{false};
+std::atomic<bool> cardInserted{false};
+
+void logFrame(const char *direction, const uint8_t *bytes, size_t size)
+{
+    if (!getConfig()->namcoN2.card.diagnostics || !bytes || !size)
+        return;
+
+    std::ostringstream line;
+    line << "Namco N2 card " << direction << " [" << size << "]:";
+    line << std::hex << std::setfill('0');
+    for (size_t i = 0; i < size; i++)
+        line << ' ' << std::setw(2) << static_cast<unsigned int>(bytes[i]);
+    log_info("%s", line.str().c_str());
+}
+
+std::string urlEncode(const char *value)
+{
+    std::ostringstream encoded;
+    encoded << std::uppercase << std::hex;
+    for (const unsigned char c : std::string(value ? value : ""))
+    {
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+            (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~')
+            encoded << static_cast<char>(c);
+        else
+            encoded << '%' << std::setw(2) << std::setfill('0') << static_cast<unsigned int>(c);
+    }
+    return encoded.str();
+}
+
+bool httpRequest(const char *method, const std::string &path, std::string *body)
+{
+    const NamcoN2CardConfig &card = getConfig()->namcoN2.card;
+    if (!card.apiHost[0] || card.apiPort <= 0 || card.apiPort > 65535)
+        return false;
+
+    addrinfo hints = {};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    char port[16];
+    std::snprintf(port, sizeof(port), "%d", card.apiPort);
+    addrinfo *addresses = nullptr;
+    if (getaddrinfo(card.apiHost, port, &hints, &addresses) != 0)
+        return false;
+
+    SOCKET socketHandle = INVALID_SOCKET;
+    for (addrinfo *address = addresses; address; address = address->ai_next)
+    {
+        socketHandle = socket(address->ai_family, address->ai_socktype, address->ai_protocol);
+        if (socketHandle == INVALID_SOCKET)
+            continue;
+
+        u_long nonBlocking = 1;
+        ioctlsocket(socketHandle, FIONBIO, &nonBlocking);
+        int connected = connect(socketHandle, address->ai_addr, static_cast<int>(address->ai_addrlen));
+        if (connected == SOCKET_ERROR && WSAGetLastError() == WSAEWOULDBLOCK)
+        {
+            fd_set writable;
+            FD_ZERO(&writable);
+            FD_SET(socketHandle, &writable);
+            timeval timeout = {0, 500000};
+            connected = select(0, nullptr, &writable, nullptr, &timeout) > 0 ? 0 : SOCKET_ERROR;
+            if (connected == 0)
+            {
+                int error = 0;
+                int length = sizeof(error);
+                getsockopt(socketHandle, SOL_SOCKET, SO_ERROR, reinterpret_cast<char *>(&error), &length);
+                if (error)
+                    connected = SOCKET_ERROR;
+            }
+        }
+        if (connected == 0)
+        {
+            nonBlocking = 0;
+            ioctlsocket(socketHandle, FIONBIO, &nonBlocking);
+            break;
+        }
+        closesocket(socketHandle);
+        socketHandle = INVALID_SOCKET;
+    }
+    freeaddrinfo(addresses);
+    if (socketHandle == INVALID_SOCKET)
+        return false;
+
+    DWORD timeoutMs = 750;
+    setsockopt(socketHandle, SOL_SOCKET, SO_RCVTIMEO,
+               reinterpret_cast<const char *>(&timeoutMs), sizeof(timeoutMs));
+    setsockopt(socketHandle, SOL_SOCKET, SO_SNDTIMEO,
+               reinterpret_cast<const char *>(&timeoutMs), sizeof(timeoutMs));
+
+    std::ostringstream request;
+    request << method << ' ' << path << " HTTP/1.0\r\nHost: " << card.apiHost
+            << "\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
+    const std::string requestText = request.str();
+    size_t sentTotal = 0;
+    while (sentTotal < requestText.size())
+    {
+        int sent = send(socketHandle, requestText.data() + sentTotal,
+                        static_cast<int>(requestText.size() - sentTotal), 0);
+        if (sent <= 0)
+        {
+            closesocket(socketHandle);
+            return false;
+        }
+        sentTotal += static_cast<size_t>(sent);
+    }
+
+    std::string response;
+    char chunk[2048];
+    for (int received = recv(socketHandle, chunk, sizeof(chunk), 0); received > 0;
+         received = recv(socketHandle, chunk, sizeof(chunk), 0))
+        response.append(chunk, chunk + received);
+    closesocket(socketHandle);
+
+    const size_t firstSpace = response.find(' ');
+    const int status = firstSpace == std::string::npos ? 0 : std::atoi(response.c_str() + firstSpace + 1);
+    const size_t headerEnd = response.find("\r\n\r\n");
+    if (body)
+        *body = headerEnd == std::string::npos ? std::string() : response.substr(headerEnd + 4);
+    return status >= 200 && status < 300;
+}
+
+bool refreshApiStatus(bool announce)
+{
+    std::string insertedBody;
+    const bool okay = httpRequest("GET", "/api/v1/insertedCard", &insertedBody);
+    const bool wasConnected = apiConnected.exchange(okay, std::memory_order_acq_rel);
+    if (okay)
+    {
+        cardInserted.store(insertedBody.find("\"inserted\":true") != std::string::npos,
+                           std::memory_order_release);
+    }
+    if (okay != wasConnected)
+        log_info("Namco N2 card API: %s at http://%s:%d",
+                 okay ? "connected" : "disconnected", getConfig()->namcoN2.card.apiHost,
+                 getConfig()->namcoN2.card.apiPort);
+    if (announce)
+        log_info("Namco N2 card status: pipe=%s api=%s inserted=%s",
+                 linkState.load() == LinkState::Connected ? "connected" : "disconnected",
+                 okay ? "connected" : "disconnected",
+                 cardInserted.load() ? "yes" : "no");
+    return okay;
+}
+
+void performControlRequest(ControlRequest request)
+{
+    const char *cardName = getConfig()->namcoN2.card.cardName;
+    std::string ignored;
+    switch (request)
+    {
+        case ControlRequest::Insert:
+        {
+            std::string path = "/api/v1/insertedCard?loadonly=1";
+            if (cardName[0])
+                path += "&cardname=" + urlEncode(cardName);
+            if (httpRequest("POST", path, &ignored))
+                log_info("Namco N2 card: insert requested%s%s", cardName[0] ? " for " : "",
+                         cardName[0] ? cardName : "");
+            else
+                log_warn("Namco N2 card: insert request failed; YaCardEmu API is unavailable");
+            break;
+        }
+        case ControlRequest::Eject:
+            if (httpRequest("DELETE", "/api/v1/insertedCard", &ignored))
+                log_info("Namco N2 card: eject requested through YaCardEmu API");
+            else
+                log_warn("Namco N2 card: eject request failed; YaCardEmu API is unavailable");
+            break;
+    }
+    refreshApiStatus(false);
+    if (request == ControlRequest::Eject && apiConnected.load() && cardInserted.load())
+        log_warn("Namco N2 card: YaCardEmu accepted DELETE but still reports the card inserted; "
+                 "this YaCardEmu build does not implement forced removal, so let the game eject it");
+}
+
+void queueControlRequest(ControlRequest request)
+{
+    std::lock_guard<std::mutex> lock(controlMutex);
+    if (controlQueue.size() < 32)
+        controlQueue.push_back(request);
+}
+
+void cardControlWorker()
+{
+    WSADATA data;
+    if (WSAStartup(MAKEWORD(2, 2), &data) != 0)
+    {
+        log_error("Namco N2 card API: WSAStartup failed");
+        return;
+    }
+
+    DWORD lastPoll = 0;
+    while (!workerStopRequested.load(std::memory_order_relaxed))
+    {
+        ControlRequest request = ControlRequest::Insert;
+        bool haveRequest = false;
+        {
+            std::lock_guard<std::mutex> lock(controlMutex);
+            if (!controlQueue.empty())
+            {
+                request = controlQueue.front();
+                controlQueue.pop_front();
+                haveRequest = true;
+            }
+        }
+        const DWORD now = GetTickCount();
+        if (haveRequest)
+            performControlRequest(request);
+        else if (static_cast<LONG>(now - lastPoll) >= 2000)
+        {
+            refreshApiStatus(false);
+            lastPoll = now;
+        }
+        else
+            Sleep(25);
+    }
+    WSACleanup();
+}
 
 bool launchYaCardEmu()
 {
@@ -278,6 +513,7 @@ void cardWorker()
         }
         if (!outgoing.empty())
         {
+            logFrame("TX", outgoing.data(), outgoing.size());
             DWORD written = 0;
             if (!WriteFile(pipe, outgoing.data(), static_cast<DWORD>(outgoing.size()), &written, nullptr))
             {
@@ -318,6 +554,7 @@ void cardWorker()
                         std::vector<uint8_t> frame(incoming.begin(), incoming.begin() + length);
                         incoming.erase(incoming.begin(), incoming.begin() + length);
                         neutraliseCancelStatus(frame);
+                        logFrame("RX", frame.data(), frame.size());
                         if (pending.size() + frame.size() <= maximumQueuedBytes)
                             pending.insert(pending.end(), frame.begin(), frame.end());
                     }
@@ -385,6 +622,9 @@ void ensureWorkerStarted()
         workerThread = std::thread(cardWorker);
         workerThread.detach();
     });
+    std::call_once(controlWorkerOnce, []() {
+        std::thread(cardControlWorker).detach();
+    });
 }
 
 bool linkIsUp()
@@ -410,6 +650,26 @@ extern "C" int n2CardReaderOpen(const char *path, int)
 extern "C" int n2CardReaderIsConnected(void)
 {
     return linkIsUp() ? 1 : 0;
+}
+
+extern "C" const char *n2CardReaderConnectionText(void)
+{
+    ensureWorkerStarted();
+    if (linkState.load(std::memory_order_acquire) != LinkState::Connected)
+        return "Disconnected";
+    return apiConnected.load(std::memory_order_acquire) ? "Connected" : "Reader only";
+}
+
+extern "C" void n2CardReaderRequestInsert(void)
+{
+    ensureWorkerStarted();
+    queueControlRequest(ControlRequest::Insert);
+}
+
+extern "C" void n2CardReaderRequestEject(void)
+{
+    ensureWorkerStarted();
+    queueControlRequest(ControlRequest::Eject);
 }
 
 extern "C" int n2CardReaderIsDescriptor(int fd)

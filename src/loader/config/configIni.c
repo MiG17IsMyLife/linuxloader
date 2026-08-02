@@ -31,6 +31,12 @@ int createDefaultIni(const char *filePath)
     fprintf(file, "YACARDEMU_AUTOSTART = %s\n", defaults.namcoN2.card.autoStart ? "true" : "false");
     fprintf(file, "YACARDEMU_PATH = \"%s\"\n", defaults.namcoN2.card.executablePath);
     fprintf(file, "YACARDEMU_PIPE = \"%s\"\n\n", defaults.namcoN2.card.pipeName);
+    fprintf(file, "# Optional YaCardEmu HTTP API controls and protocol diagnostics.\n");
+    fprintf(file, "YACARDEMU_API_HOST = \"%s\"\n", defaults.namcoN2.card.apiHost);
+    fprintf(file, "YACARDEMU_API_PORT = %d\n", defaults.namcoN2.card.apiPort);
+    fprintf(file, "YACARDEMU_CARD_NAME = \"%s\"\n", defaults.namcoN2.card.cardName);
+    fprintf(file, "YACARDEMU_DIAGNOSTICS = %s\n\n",
+            defaults.namcoN2.card.diagnostics ? "true" : "false");
 
     // [Display]
     fprintf(file, "[Display]\n");

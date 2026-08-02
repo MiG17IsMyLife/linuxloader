@@ -27,6 +27,7 @@
 #include "../../../elfLoader/symbolResolver.hpp"
 #include "../../../elfLoader/glHooks.hpp"
 #include "../../../graphics/fpsLimiter.h"
+#include "../../../graphics/runtimeProfiler.h"
 #include "../../../graphics/sdlCalls.h"
 #include "../../../input/sdlInput.h"
 #include "../../../log/log.h"
@@ -524,16 +525,28 @@ int admGetDeviceAttribi(int, int attribute, int *value)
 
 int admSwapBuffers(AdmWindow *)
 {
+    runtimeProfilerFrameBoundary();
+
+    uint64_t phase = runtimeProfilerPhaseBegin();
     pollEvents();
+    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_INPUT, phase);
+
     SDL_Window *window = getSDLWindow();
     if (!window)
         return 0;
-    SDL_GL_SwapWindow(window);
 
+    phase = runtimeProfilerPhaseBegin();
+    SDL_GL_SwapWindow(window);
+    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_SWAP, phase);
+
+    phase = runtimeProfilerPhaseBegin();
     if (getConfig()->fpsLimiter)
         frameTiming();
+    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_LIMITER, phase);
 
+    phase = runtimeProfilerPhaseBegin();
     showFpsInWindowTitle(n2GetGameTitle());
+    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_TITLE, phase);
     return 1;
 }
 
@@ -563,19 +576,10 @@ int admSwapInterval(int interval)
     return SDL_GL_SetSwapInterval(interval) ? 1 : 0;
 }
 
-using ClAppGetInstance = void *(*)();
-using ClAppIsMainThread = bool (*)(void *);
-using ThreadManagerCurrent = void *(*)(void *);
-using CallFromMainThread = void (*)(void *, void (*)(void *), void *);
 using CreateTextureHandle = int (*)(void *, int, int);
 using SetTexture = int (*)(void *, int, int);
 using SetTextureRegion = int (*)(void *, int, int, int, int, int, int, void *);
 
-ClAppGetInstance clAppGetInstance = nullptr;
-ClAppIsMainThread clAppIsMainThread = nullptr;
-void **clMainInstance = nullptr;
-ThreadManagerCurrent threadManagerCurrent = nullptr;
-CallFromMainThread callFromMainThread = nullptr;
 CreateTextureHandle originalCreateTextureHandle = nullptr;
 SetTexture originalSetTexture = nullptr;
 SetTextureRegion originalSetTextureRegion = nullptr;
@@ -746,29 +750,21 @@ void n2AllocateImageMemory(void *image)
     }
 }
 
-bool isN2MainThread()
+bool isLoaderMainThread()
 {
-    return clAppGetInstance && clAppIsMainThread &&
-           clAppIsMainThread(clAppGetInstance());
+    return SDL_IsMainThread();
 }
 
-bool dispatchFromN2Worker(void (*callback)(void *), void *arguments)
+bool dispatchOnLoaderMainThread(SDL_MainThreadCallback callback, void *arguments)
 {
-    if (!clMainInstance || !*clMainInstance || !threadManagerCurrent || !callFromMainThread)
-        return false;
-
-    // clMain owns clNPThreadManager at offset 0x40 in the WMMT3 N2 executable.
-    void *threadManager = *reinterpret_cast<void **>(
-        reinterpret_cast<uint8_t *>(*clMainInstance) + 0x40);
-    if (!threadManager)
-        return false;
-
-    void *currentThread = threadManagerCurrent(threadManager);
-    if (!currentThread)
-        return false;
-
-    callFromMainThread(currentThread, callback, arguments);
-    return true;
+    /*
+     * SDL owns both the window and the OpenGL context used by the N2 bridge.
+     * Keep cross-thread work inside that ownership boundary instead of
+     * depending on undocumented game objects or fixed object offsets.
+     * pollEvents() in admSwapBuffers() services SDL's main-thread callback
+     * queue once per rendered frame.
+     */
+    return SDL_RunOnMainThread(callback, arguments, false);
 }
 
 struct TextureHandleCall
@@ -778,7 +774,7 @@ struct TextureHandleCall
     int height;
 };
 
-void createTextureHandleOnMain(void *opaque)
+void SDLCALL createTextureHandleOnMain(void *opaque)
 {
     TextureHandleCall *call = static_cast<TextureHandleCall *>(opaque);
     originalCreateTextureHandle(call->self, call->width, call->height);
@@ -787,11 +783,11 @@ void createTextureHandleOnMain(void *opaque)
 
 int createTextureHandle(void *self, int width, int height)
 {
-    if (isN2MainThread())
+    if (isLoaderMainThread())
         return originalCreateTextureHandle(self, width, height);
 
     TextureHandleCall *call = new TextureHandleCall{self, width, height};
-    if (dispatchFromN2Worker(createTextureHandleOnMain, call))
+    if (dispatchOnLoaderMainThread(createTextureHandleOnMain, call))
         return 1;
 
     delete call;
@@ -806,7 +802,7 @@ struct SetTextureCall
     int image;
 };
 
-void setTextureOnMain(void *opaque)
+void SDLCALL setTextureOnMain(void *opaque)
 {
     SetTextureCall *call = static_cast<SetTextureCall *>(opaque);
     originalSetTexture(call->self, call->texture, call->image);
@@ -815,11 +811,11 @@ void setTextureOnMain(void *opaque)
 
 int setTexture(void *self, int texture, int image)
 {
-    if (isN2MainThread())
+    if (isLoaderMainThread())
         return originalSetTexture(self, texture, image);
 
     SetTextureCall *call = new SetTextureCall{self, texture, image};
-    if (dispatchFromN2Worker(setTextureOnMain, call))
+    if (dispatchOnLoaderMainThread(setTextureOnMain, call))
         return 1;
 
     delete call;
@@ -839,7 +835,7 @@ struct SetTextureRegionCall
     void *image;
 };
 
-void setTextureRegionOnMain(void *opaque)
+void SDLCALL setTextureRegionOnMain(void *opaque)
 {
     SetTextureRegionCall *call = static_cast<SetTextureRegionCall *>(opaque);
     originalSetTextureRegion(call->self, call->texture, call->x, call->y,
@@ -850,12 +846,12 @@ void setTextureRegionOnMain(void *opaque)
 int setTextureRegion(void *self, int texture, int x, int y, int width, int height,
                      int format, void *image)
 {
-    if (isN2MainThread())
+    if (isLoaderMainThread())
         return originalSetTextureRegion(self, texture, x, y, width, height, format, image);
 
     SetTextureRegionCall *call =
         new SetTextureRegionCall{self, texture, x, y, width, height, format, image};
-    if (dispatchFromN2Worker(setTextureRegionOnMain, call))
+    if (dispatchOnLoaderMainThread(setTextureRegionOnMain, call))
         return 1;
 
     delete call;
@@ -1057,12 +1053,17 @@ extern "C" int n2InstallHooks(void)
                              reinterpret_cast<void *>(checkDispenserCardDevice),
                              reinterpret_cast<void **>(&originalRequestCheckDispenser));
 
-    if (n2CardReaderIsConnected())
-        log_info("Namco N2 card: YaCardEmu reader connected");
-    else
-        log_warn("Namco N2 card: no YaCardEmu reader on %s; the cabinet will report E51 "
-                 "until it is running",
-                 getConfig()->namcoN2.card.pipeName);
+    /*
+     * Start the asynchronous bridge, but do not interpret its initial state as
+     * a failed connection. The worker has only just been created here and may
+     * not have reached CreateFile yet, even when YaCardEmu already owns the
+     * pipe. openCardPipe() logs the authoritative connected/unavailable result
+     * after the actual attempt and continues retrying when YaCardEmu starts
+     * later.
+     */
+    (void)n2CardReaderIsConnected();
+    log_info("Namco N2 card: connecting /dev/ttyM2 to external YaCardEmu at %s",
+             getConfig()->namcoN2.card.pipeName);
 
     n2HookSymbol("hasp_cleanup", reinterpret_cast<void *>(returnHaspSuccess));
     n2HookSymbol("hasp_decrypt", reinterpret_cast<void *>(returnHaspSuccess));
@@ -1100,39 +1101,22 @@ extern "C" int n2InstallHooks(void)
 
     n2InstallAdmHooks();
 
-    clAppGetInstance = reinterpret_cast<ClAppGetInstance>(
-        n2ResolveSymbol("_ZN11clAppSystem11getInstanceEv"));
-    clAppIsMainThread = reinterpret_cast<ClAppIsMainThread>(
-        n2ResolveSymbol("_ZN11clAppSystem12isMainThreadEv"));
-    clMainInstance = static_cast<void **>(
-        n2ResolveSymbol("_ZN11teSingletonI10teSequenceI6clMainEE11sm_instanceE"));
-    threadManagerCurrent = reinterpret_cast<ThreadManagerCurrent>(
-        n2ResolveSymbol("_ZN17clNPThreadManager7currentEv"));
-    callFromMainThread = reinterpret_cast<CallFromMainThread>(
-        n2ResolveSymbol("_ZN10clNPThread26callFunctionFromMainThreadEPFvPvES0_"));
-
-    if (clAppGetInstance && clAppIsMainThread && clMainInstance &&
-        threadManagerCurrent && callFromMainThread)
-    {
-        n2HookSymbolWithOriginal(
-            "_ZN24clAlchemyTextureAccessor19createTextureHandleEii",
-            reinterpret_cast<void *>(createTextureHandle),
-            reinterpret_cast<void **>(&originalCreateTextureHandle));
-        n2HookSymbolWithOriginal(
-            "_ZN3Gap3Gfx19igAGLEVisualContext10setTextureEii",
-            reinterpret_cast<void *>(setTexture),
-            reinterpret_cast<void **>(&originalSetTexture));
-        n2HookSymbolWithOriginal(
-            "_ZN3Gap3Gfx19igAGLEVisualContext16setTextureRegionEiiiiiiPNS0_7igImageE",
-            reinterpret_cast<void *>(setTextureRegion),
-            reinterpret_cast<void **>(&originalSetTextureRegion));
-        log_info("Namco N2: installed main-thread texture dispatch");
-    }
-    else
-    {
-        log_warn("Namco N2: game thread dispatch symbols are incomplete; "
-                 "worker-thread texture uploads remain unpatched");
-    }
+    int textureHooks = 0;
+    textureHooks += n2HookSymbolWithOriginal(
+        "_ZN24clAlchemyTextureAccessor19createTextureHandleEii",
+        reinterpret_cast<void *>(createTextureHandle),
+        reinterpret_cast<void **>(&originalCreateTextureHandle));
+    textureHooks += n2HookSymbolWithOriginal(
+        "_ZN3Gap3Gfx19igAGLEVisualContext10setTextureEii",
+        reinterpret_cast<void *>(setTexture),
+        reinterpret_cast<void **>(&originalSetTexture));
+    textureHooks += n2HookSymbolWithOriginal(
+        "_ZN3Gap3Gfx19igAGLEVisualContext16setTextureRegionEiiiiiiPNS0_7igImageE",
+        reinterpret_cast<void *>(setTextureRegion),
+        reinterpret_cast<void **>(&originalSetTextureRegion));
+    if (textureHooks)
+        log_info("Namco N2: installed SDL-owned main-thread texture dispatch (%d hooks)",
+                 textureHooks);
 
     n2HookSymbolWithOriginal(
         "_ZN3Gap4Core12igMetaObject8findTypeEPKc",

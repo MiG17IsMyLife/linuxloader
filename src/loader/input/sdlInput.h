@@ -82,6 +82,7 @@ typedef enum
     LA_CardInsert,
     LA_Card1Insert,
     LA_Card2Insert,
+    LA_CardEject,
     LA_A,
     LA_B,
     LA_C,

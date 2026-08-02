@@ -36,6 +36,66 @@ static const char *log_style[] = {
 
 static const char *log_names[] = {"TRACE", "DEBUG", "GAME", "INFO", "WARN", "ERROR", "FATAL"};
 
+/* Most loader messages fit here, avoiding two formatting passes and a heap
+ * allocation for every emitted line. */
+#define LOG_STACK_MESSAGE_SIZE 1024
+
+static void logSetMessageMetadata(LogFormattedMessage *result)
+{
+    result->endWithNewLine =
+        result->size > 0 &&
+        (result->message[result->size - 1] == '\n' || result->message[result->size - 1] == '\r');
+
+    if (LOG_NO_REPEAT && result->size + 1 < LOG_REPEAT_BUFFER_SIZE)
+    {
+        if (strcmp(logLastMessage, result->message) == 0)
+            logRepeatCount++;
+        else
+        {
+            memcpy(logLastMessage, result->message, result->size + 1);
+            logRepeatCount = 0;
+        }
+    }
+    else
+    {
+        logRepeatCount = 0;
+    }
+    result->repeat = logRepeatCount;
+}
+
+static int logWriteVA(int level, const char *message, va_list args)
+{
+    char stackMessage[LOG_STACK_MESSAGE_SIZE];
+    va_list measureArgs;
+    va_copy(measureArgs, args);
+    const int required = vsnprintf(stackMessage, sizeof(stackMessage), message, measureArgs);
+    va_end(measureArgs);
+    if (required < 0)
+        return -1;
+
+    char *allocated = NULL;
+    LogFormattedMessage formatted = {stackMessage, (size_t)required, 0, 0};
+    if ((size_t)required >= sizeof(stackMessage))
+    {
+        allocated = (char *)malloc((size_t)required + 1);
+        if (!allocated)
+            return -1;
+
+        va_list formatArgs;
+        va_copy(formatArgs, args);
+        vsnprintf(allocated, (size_t)required + 1, message, formatArgs);
+        va_end(formatArgs);
+        formatted.message = allocated;
+    }
+
+    logSetMessageMetadata(&formatted);
+    FILE *stream = logGetStream();
+    logPrintHeader(stream, level);
+    const int result = logPrintMessage(stream, formatted, level);
+    free(allocated);
+    return result;
+}
+
 /**
  * @brief Logs a formatted message with metadata using a variadic argument list.
  *
@@ -97,18 +157,7 @@ int logVA(int level, const char *file, int line, const char *message, va_list ar
         return ret;
     }
 
-    // Format the message
-    LogFormattedMessage formattedMessage = logFormatMessage(message, args);
-
-    FILE *stream = logGetStream();
-    logPrintHeader(stream, level);
-
-    ret = logPrintMessage(stream, formattedMessage, level);
-
-    // Cleanup
-    free(formattedMessage.message);
-
-    return ret;
+    return logWriteVA(level, message, args);
 }
 
 /**
@@ -169,20 +218,10 @@ int logGeneric(int level, const char *file, int line, const char *message, ...)
     if (level == LOG_DEBUG && getConfig()->showDebugMessages == 0)
         return 0;
 
-    // Format the message
     va_list args;
     va_start(args, message);
-    LogFormattedMessage formattedMessage = logFormatMessage(message, args);
+    ret = logWriteVA(level, message, args);
     va_end(args);
-
-    FILE *stream = logGetStream();
-    logPrintHeader(stream, level);
-
-    ret = logPrintMessage(stream, formattedMessage, level);
-
-    // Cleanup
-    free(formattedMessage.message);
-
     return ret;
 }
 
@@ -409,8 +448,11 @@ LogFormattedMessage logFormatMessage(const char *message, va_list args)
     va_copy(args_copy, args);
 
     // Calculate the size of the formatted message (excluding the null terminator)
-    size_t size = vsnprintf(NULL, 0, message, args_copy);
+    int required = vsnprintf(NULL, 0, message, args_copy);
     va_end(args_copy);
+    if (required < 0)
+        return result;
+    size_t size = (size_t)required;
 
     // Allocate memory for the formatted message
     char *formatted_message = (char *)malloc(size + 1); // +1 for the null terminator
@@ -422,41 +464,10 @@ LogFormattedMessage logFormatMessage(const char *message, va_list args)
     // Format the message into the allocated memory
     vsnprintf(formatted_message, size + 1, message, args);
 
-    // Detect line ending
-    int ends_with_newline = 0;
-    if (formatted_message[size - 1] == '\n' || formatted_message[size - 1] == '\r')
-    {
-        ends_with_newline = 1;
-    }
-
-    // Only log message if smaller than buffer
-    if (LOG_NO_REPEAT && (size + 1) < LOG_REPEAT_BUFFER_SIZE)
-    {
-        // Compare previous and current messages
-        if (strcmp(logLastMessage, formatted_message) == 0)
-        {
-            // Message is the same as the last one !
-            logRepeatCount++;
-        }
-        else
-        {
-            // Track the new message.
-            strncpy(logLastMessage, formatted_message, size + 1);
-            // Force a null terminator - is this needed ?
-            // logLastMessage[LOG_REPEAT_BUFFER_SIZE - 1] = '\0';
-        }
-    }
-    else
-    {
-        // Message bigger than buffer, set counter to 0
-        logRepeatCount = 0;
-    }
-
     // Populate the result structure
     result.message = formatted_message;
     result.size = size;
-    result.endWithNewLine = ends_with_newline;
-    result.repeat = logRepeatCount;
+    logSetMessageMetadata(&result);
 
     return result;
 }
@@ -497,4 +508,9 @@ void logGetElapsedTime(long *seconds, long *milliseconds)
 void logSetMinLevel(int level)
 {
     g_logLevel = level;
+}
+
+int logIsEnabled(int level)
+{
+    return level >= LOG_TRACE && level <= LOG_FATAL && level >= g_logLevel;
 }

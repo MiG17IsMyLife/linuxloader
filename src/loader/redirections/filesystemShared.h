@@ -16,7 +16,8 @@ typedef enum
     EEPROM = 2,
     SERIAL0 = 3,
     SERIAL1 = 4,
-    PCI_CARD_000 = 5
+    PCI_CARD_000 = 5,
+    DEVICE_TYPE_COUNT = 6
 } DeviceType;
 
 typedef enum
@@ -35,6 +36,7 @@ typedef enum
 
 extern FILE *fileHooks[10];
 extern FileTypes fileRead[10];
+extern DeviceType hooks[DEVICE_TYPE_COUNT];
 
 #ifdef __cplusplus
 extern "C" {

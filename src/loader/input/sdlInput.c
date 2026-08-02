@@ -23,6 +23,9 @@
 #include "../hardware/lindbergh/jvs.h"
 #include "../log/log.h"
 #include "../hardware/lindbergh/touchScreen.h"
+#if defined(_WIN32) || defined(__MINGW32__)
+#include "../hardware/namco/n2/n2CardReader.h"
+#endif
 #include "../graphics/sdlCalls.h"
 #include "../mainShared.h"
 #include "wiimoteEvdev.h"
@@ -162,6 +165,7 @@ const struct
                       {"CardInsert", LA_CardInsert},
                       {"Card1Insert", LA_Card1Insert},
                       {"Card2Insert", LA_Card2Insert},
+                      {"CardEject", LA_CardEject},
                       {"ButtonA", LA_A},
                       {"ButtonB", LA_B},
                       {"ButtonC", LA_C},
@@ -693,6 +697,11 @@ void initActionProperties()
         gActionProperties[p][LA_CardInsert].isToggle = true;
         gActionProperties[p][LA_Card1Insert].isToggle = true;
         gActionProperties[p][LA_Card2Insert].isToggle = true;
+        if (gGrp == GROUP_WMMT3)
+        {
+            // YaCardEmu controls are commands, not persistent JVS switches.
+            gActionProperties[p][LA_CardInsert].isToggle = false;
+        }
     }
     gActionProperties[PLAYER_1][LA_Flying_X].isCentering = true;
     gActionProperties[PLAYER_1][LA_Flying_Y].isCentering = true;
@@ -2148,6 +2157,26 @@ void processChangedActions()
             sdlQuit();
             continue;
         }
+
+#if defined(_WIN32) || defined(__MINGW32__)
+        if (gGrp == GROUP_WMMT3 && gActionStates[player][actionId].isActive)
+        {
+            int handled = 1;
+            switch (actionId)
+            {
+                case LA_CardInsert: n2CardReaderRequestInsert(); break;
+                case LA_CardEject: n2CardReaderRequestEject(); break;
+                default: handled = 0; break;
+            }
+            if (handled)
+            {
+                // Treat every card control as a one-shot command even if an
+                // older controls.ini still has CardInsert_Toggle enabled.
+                gActionStates[player][actionId].isActive = false;
+                continue;
+            }
+        }
+#endif
 
         JVSActionMapping *map = &gJvsMap[player][actionId];
         ActionState *state = &gActionStates[player][actionId];

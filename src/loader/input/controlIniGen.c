@@ -131,8 +131,9 @@ const size_t gDefaultDrivingBindingsSize = sizeof(gDefaultDrivingBindings) / siz
  * The cabinet is a driving one, but its panel does not match the Lindbergh
  * driving profile: there is no boost button, and the card is handled by the
  * reader on /dev/ttyM2 rather than a JVS switch, so Boost, BoostRight and
- * CardInsert are left out instead of being advertised as bindable.  What it
- * does have on top of wheel and pedals is a six-position shifter, reachable
+ * the reader on /dev/ttyM2 rather than a JVS switch, so the card actions below
+ * are routed to the external YaCardEmu API. What it has on top of wheel and
+ * pedals is a six-position shifter, reachable
  * either sequentially through GearUp/GearDown or directly through Gear1..6,
  * plus the VIEW and intrusion-selection cabinet buttons.
  *
@@ -171,6 +172,10 @@ const ControlBinding gDefaultWmmtBindings[] = {
     {INPUT_TYPE_KEY, 0, SDL_SCANCODE_M, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Intrude, -1, 0},
     {INPUT_TYPE_GAMEPAD_BUTTON, 0, SDL_GAMEPAD_BUTTON_WEST, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Intrude, -1, 0},
     {INPUT_TYPE_JOY_BUTTON, 0, 3, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Intrude, -1, 0},
+
+    // External YaCardEmu controls.
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_INSERT, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_CardInsert, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_DELETE, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_CardEject, -1, 0},
 };
 
 const size_t gDefaultWmmtBindingsSize = sizeof(gDefaultWmmtBindings) / sizeof(gDefaultWmmtBindings[0]);

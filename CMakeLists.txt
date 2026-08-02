@@ -4,6 +4,18 @@ project(linuxloader LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# A build directory configured without CMAKE_BUILD_TYPE used to produce an
+# entirely unoptimised loader.  That is especially expensive on Windows where
+# every guest libc, socket and pthread call crosses a native bridge.  Keep
+# symbols for useful crash reports while enabling the compiler's well-tested
+# -O2 release path by default.  Explicit Debug/Release selections still win.
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING
+        "Choose the build type (Debug, Release, RelWithDebInfo, MinSizeRel)" FORCE)
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+        Debug Release RelWithDebInfo MinSizeRel)
+endif()
+
 # Include directories
 include_directories(${PROJECT_SOURCE_DIR}/src)
 include_directories(${PROJECT_SOURCE_DIR}/src/log)

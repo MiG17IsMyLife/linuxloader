@@ -26,6 +26,7 @@
 #include <SDL3_ttf/SDL_ttf.h>
 
 #include "glxBridge.h"
+#include "runtimeProfiler.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -446,27 +447,44 @@ const unsigned char *bridgegluErrorString(unsigned int error)
 void bridgeGlxSwapBuffers(Display *dpy, GLXDrawable drawable)
 {
     EmulatorConfig *config = getConfig();
+    uint64_t phase;
 
+    runtimeProfilerFrameBoundary();
+
+    phase = runtimeProfilerPhaseBegin();
     if (config->borderEnabled)
         drawGameBorder(config->width, config->height, config->whiteBorderPercentage, config->blackBorderPercentage);
+    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_BORDER, phase);
 
+    phase = runtimeProfilerPhaseBegin();
     if (p1CrossHairInitialized || p2CrossHairInitialized)
         renderCrosshairs();
+    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_CROSSHAIR, phase);
 
+    phase = runtimeProfilerPhaseBegin();
     blitStretch();
+    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_BLIT, phase);
 
+    phase = runtimeProfilerPhaseBegin();
     pollEvents();
+    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_INPUT, phase);
 
+    phase = runtimeProfilerPhaseBegin();
     SDL_GL_SwapWindow(getSDLWindow());
+    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_SWAP, phase);
 
+    phase = runtimeProfilerPhaseBegin();
     if (config->fpsLimiter)
         frameTiming();
+    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_LIMITER, phase);
 
+    phase = runtimeProfilerPhaseBegin();
     static double localFps = 0.0;
     static char windowTitle[256] = {0};
     localFps = calculateFps();
     sprintf(windowTitle, "%s - FPS: %.2f", getGameName(), localFps);
     SDL_SetWindowTitle(getSDLWindow(), windowTitle);
+    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_TITLE, phase);
 
     if (gId == QUIZ_AXA_SBMS || gId == QUIZ_AXA_SBUR_LIVE)
         mj4TouchHolding();

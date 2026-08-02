@@ -14,7 +14,6 @@
 
 extern uint32_t gId;
 extern int gGrp;
-extern DeviceType hooks[5];
 
 unsigned char response;
 int wheelInitialized;

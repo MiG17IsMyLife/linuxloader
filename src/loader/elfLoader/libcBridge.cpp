@@ -169,10 +169,11 @@ namespace LibcBridge
         MAP("openlog", bridgeOpenlog);
         MAP("closelog", bridgeCloselog);
 
-        MAP("rand", rand);
-        MAP("random", rand);
+        MAP("rand", bridgeRand);
+        MAP("random", bridgeRandom);
         MAP("rand_r", bridgeRand_r);
-        MAP("srand", srand);
+        MAP("srand", bridgeSrand);
+        MAP("srandom", bridgeSrandom);
         MAP("signal", bridgeSignal);
         MAP("raise", bridgeRaise);
         MAP("sigfillset", bridgeSigfillset);
@@ -1155,11 +1156,49 @@ namespace LibcBridge
         return 0;
     }
 
+    namespace
+    {
+        std::mutex randomMutex;
+        uint32_t randomState = 1;
+
+        uint32_t nextRandom31(uint32_t &state)
+        {
+            // Advance all 32 state bits, then expose a Linux-sized 31-bit value.
+            state = state * 1103515245u + 12345u;
+            return state >> 1;
+        }
+    }
+
+    int bridgeRand(void)
+    {
+        std::lock_guard<std::mutex> lock(randomMutex);
+        return static_cast<int>(nextRandom31(randomState));
+    }
+
+    long bridgeRandom(void)
+    {
+        return static_cast<long>(bridgeRand());
+    }
+
     int bridgeRand_r(unsigned int *seedp)
     {
-        log_debug("rand_r() called");
-        *seedp = rand();
-        return *seedp;
+        if (!seedp)
+            return 0;
+        uint32_t state = static_cast<uint32_t>(*seedp);
+        const int result = static_cast<int>(nextRandom31(state));
+        *seedp = state;
+        return result;
+    }
+
+    void bridgeSrand(unsigned int seed)
+    {
+        std::lock_guard<std::mutex> lock(randomMutex);
+        randomState = static_cast<uint32_t>(seed);
+    }
+
+    void bridgeSrandom(unsigned int seed)
+    {
+        bridgeSrand(seed);
     }
 
     void (*bridgeSignal(int signum, void (*handler)(int)))(int)

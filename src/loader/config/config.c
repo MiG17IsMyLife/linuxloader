@@ -180,8 +180,12 @@ void setDefaultValues(EmulatorConfig *cfg)
     // loader tries the YaCardEmu pipe by default.
     cfg->namcoN2.card.enabled = 1;
     cfg->namcoN2.card.autoStart = 0;
+    cfg->namcoN2.card.diagnostics = 0;
+    cfg->namcoN2.card.apiPort = 8080;
     strcpy(cfg->namcoN2.card.executablePath, "");
     strcpy(cfg->namcoN2.card.pipeName, "\\\\.\\pipe\\YACardEmu");
+    strcpy(cfg->namcoN2.card.apiHost, "127.0.0.1");
+    strcpy(cfg->namcoN2.card.cardName, "");
     cfg->emulateRideboard = 0;
     cfg->emulateDriveboard = 0;
     cfg->emulateMotionboard = 0;
@@ -423,6 +427,14 @@ void applyIniConfig(EmulatorConfig *config, const IniConfig *ini)
               config->namcoN2.card.executablePath, sizeof(config->namcoN2.card.executablePath));
     getString(ini, "NamcoN2", "YACARDEMU_PIPE",
               config->namcoN2.card.pipeName, sizeof(config->namcoN2.card.pipeName));
+    getString(ini, "NamcoN2", "YACARDEMU_API_HOST",
+              config->namcoN2.card.apiHost, sizeof(config->namcoN2.card.apiHost));
+    config->namcoN2.card.apiPort =
+        getInt(ini, "NamcoN2", "YACARDEMU_API_PORT", config->namcoN2.card.apiPort);
+    getString(ini, "NamcoN2", "YACARDEMU_CARD_NAME",
+              config->namcoN2.card.cardName, sizeof(config->namcoN2.card.cardName));
+    config->namcoN2.card.diagnostics =
+        getInt(ini, "NamcoN2", "YACARDEMU_DIAGNOSTICS", config->namcoN2.card.diagnostics);
 
     // [Display]
     config->width = getInt(ini, "Display", "WIDTH", config->width);

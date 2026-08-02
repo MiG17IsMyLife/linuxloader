@@ -25,6 +25,9 @@
 #include "customCursor.h"
 #include "../input/sdlInput.h"
 #include "../hardware/lindbergh/jvs.h"
+#if defined(_WIN32) || defined(__MINGW32__)
+#include "../hardware/namco/n2/n2CardReader.h"
+#endif
 #include "../resources/LiberationMono-Regular.h"
 #include "../resources/icon.h"
 #include "../log/log.h"
@@ -480,7 +483,19 @@ void showFpsInWindowTitle(const char *name)
         return;
 
     framesSinceTitle = 0;
-    snprintf(windowTitle, sizeof(windowTitle), "%s - FPS: %.2f",
-             name && *name ? name : "linuxloader", fps);
+    if (gGrp == GROUP_WMMT3)
+    {
+#if defined(_WIN32) || defined(__MINGW32__)
+        snprintf(windowTitle, sizeof(windowTitle), "%s - FPS: %.2f - Card: %s",
+                 name && *name ? name : "linuxloader", fps,
+                 n2CardReaderConnectionText());
+#else
+        snprintf(windowTitle, sizeof(windowTitle), "%s - FPS: %.2f",
+                 name && *name ? name : "linuxloader", fps);
+#endif
+    }
+    else
+        snprintf(windowTitle, sizeof(windowTitle), "%s - FPS: %.2f",
+                 name && *name ? name : "linuxloader", fps);
     SDL_SetWindowTitle(window, windowTitle);
 }
