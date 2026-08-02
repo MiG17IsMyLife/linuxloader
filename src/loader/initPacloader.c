@@ -4,8 +4,8 @@
 #include "graphics/gpuVendor.h"
 #include "graphics/sdlCalls.h"
 #include "frontend/frontendApi.h"
-#include "hardware/ffb/sdlFfbBackend.h"
 #include "hardware/common/jvs.h"
+#include "hardware/ffb/sdlFfbBackend.h"
 #include "hardware/namco/n2/n2.h"
 #include "hardware/namco/n2/n2CardReader.h"
 #include "input/sdlInput.h"
@@ -105,8 +105,13 @@ void initMain(char *configPath, char *controlsPath)
     if (initSdlInput(controlsPath) != 0)
         exit(1);
 
-    if (getConfig()->inputMode == 2)
-        sdlFfbInit();
+    /*
+     * Give the wheel back on the way out. Nothing was releasing the haptic
+     * effects, so whatever was last applied stayed loaded in the device's own
+     * firmware after the loader had gone - the wheel came up stiff and stayed
+     * that way until it was power cycled.
+     */
+    atexit(sdlFfbShutdown);
 
     printf("\npacloader\n\n");
     printf("  GAME:        %s\n", getGameName());

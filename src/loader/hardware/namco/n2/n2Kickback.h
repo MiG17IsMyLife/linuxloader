@@ -33,20 +33,28 @@ extern "C" {
  *        for byte; other codes latch an error and put the cabinet into PCB
  *        ERROR on the test menu's I/F INITIALIZE screen.
  *
- * Not yet worked out, and what a force feedback implementation needs next:
+ * The self check does not arrive on this port. clKickback::sendJVS() copies
+ * this->0x30 into the JVS general purpose output byte at 0x97ef768, and bit 7
+ * of it is the self check request that clKickback::requestSelfCheck() raises.
+ * While that bit is set clKickback::send() deliberately transmits nothing - it
+ * only spins a retry counter - so no frame reaches this bridge, which is why
+ * the port looks idle rather than broken during start up.
+ *
+ * The board is expected to answer anyway. clKickback::waitSelfCheck() polls
+ * receive() and only advances once decordResultCode() has cleared this->0x2c
+ * to zero; if that has not happened before its countdown expires it latches an
+ * error and the cabinet reports E20 on the handle check. So the reply has to be
+ * unsolicited, which is what n2KickbackReportSelfCheck() below exists for.
+ * "E00" is one of the two codes that clear the field ("C01" is the other).
+ *
+ * Still not worked out:
  *
  *   - The layout of the ten byte request past the 0xFF 0xFF header. Bytes 2, 3,
  *     4, 6 and 8 are written from clKickback state (one of them through a float
  *     conversion, so at least one is a scaled magnitude); 5, 7 and 9 are left
  *     at zero by the initialiser.
  *   - Which reply each request expects. The bridge answers everything the same
- *     way, which is enough for a cabinet that never transmits.
- *   - The self check. clKickback::requestSelfCheck() does not go through this
- *     port at all - it calls slot 0x60 on the object at 0x9bc54dc - so with
- *     force feedback enabled the cabinet reports PCB ERROR before a single
- *     frame reaches this bridge. That path has to be understood before force
- *     feedback can be turned on, and it is the reason the game is currently
- *     run with its own force feedback setting off.
+ *     way, which is enough until the game starts transmitting in earnest.
  *
  * The other half of the board already exists: n2SteeringIo.cpp hooks
  * clKickback's setters and keeps the force feedback state in an
@@ -54,6 +62,15 @@ extern "C" {
  * should be driven from; this file is only the wire the game talks to.
  */
 int n2KickbackSerialEnabled(void);
+
+// Where clKickback keeps its singleton, so the board can read the self check
+// request line for itself instead of depending on the game to call something
+// this loader has hooked.
+void n2KickbackSetInstance(void *const *instance);
+
+// Report the motor running or stopped, the answer clKickback::waitOnPower and
+// waitOffPower each block on.
+void n2KickbackReportMotorPower(int running);
 
 int n2KickbackSerialOpen(const char *path, int flags);
 int n2KickbackSerialIsDescriptor(int fd);
