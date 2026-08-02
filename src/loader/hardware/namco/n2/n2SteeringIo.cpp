@@ -8,7 +8,7 @@
 #include <mutex>
 
 #include "../../../config/config.h"
-#include "../../common/forceFeedback.h"
+#include "../../ffb/sdlFfbBackend.h"
 #include "../../../log/log.h"
 
 namespace
@@ -33,6 +33,7 @@ SetTorque originalOffTorque = nullptr;
 N2SteeringOutputState outputState = {};
 N2SteeringOutputBackend outputBackend = {};
 std::mutex outputMutex;
+unsigned long diagnosticSequence = 0;
 
 void applySdlSteering(const N2SteeringOutputState *state, void *)
 {
@@ -70,6 +71,17 @@ void updateOutput(Update update)
     // Never invoke a future device backend while holding the state lock.
     if (getConfig()->namcoN2.forceFeedbackEnabled && backend.apply)
         backend.apply(&state, backend.userData);
+    if (getConfig()->namcoN2.forceFeedbackDiagnostics &&
+        (++diagnosticSequence == 1 || diagnosticSequence % 120 == 0))
+    {
+        log_info("N2 FFB[%lu]: torque=%d center=%u offset=%d spring=%u damper=%u "
+                 "reflection=%d/%.3f vibration=%.3f period=%d duration=%d",
+                 diagnosticSequence, state.torqueEnabled, state.center,
+                 state.centerOffset, state.spring, state.viscosity,
+                 state.reflection, state.reflectionStrength,
+                 state.vibrationStrength, state.vibrationPeriod,
+                 state.vibrationDuration);
+    }
 }
 
 void setSpring(void *object, uint8_t value)

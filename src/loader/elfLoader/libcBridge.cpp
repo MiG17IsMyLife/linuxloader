@@ -1,5 +1,5 @@
 #if defined(_WIN32) || defined(__MINGW32__)
-#include "../redirections/filesystemShared.h"
+#include "../redirections/filesystem.h"
 #include "memoryManager.hpp"
 #include "libcBridge.hpp"
 #include "../redirections/libcShared.h"

@@ -4,7 +4,6 @@
 #include <ctype.h>
 
 #include "config.h"
-#include "gameData.h"
 #include "../graphics/gpuVendor.h"
 #include "../log/log.h"
 #include "iniParser.h"
@@ -26,15 +25,12 @@ FILE *configFile = NULL;
 #define PATH_MAX 4096
 #endif
 
-const char *LindbergColourStrings[] = {"Lindbergh Yellow", "Lindbergh Red", "Lindbergh Blue", "Lindbergh Silver", "Lindbergh RedEX"};
-
 const char *GameRegionStrings[] = {"Japan", "US", "Export"};
 
 const char *GpuTypeStrings[] = {"Auto Detection", "NVIDIA", "AMD", "ATI", "INTEL", "Unknown", "ERROR_GPU"};
 
 static int detectGame(uint32_t elf_crc)
 {
-#if defined(_WIN32) || defined(__MINGW32__)
     if (n2IsDetected())
     {
         config.platform = ARCADE_PLATFORM_NAMCO_N2;
@@ -49,7 +45,7 @@ static int detectGame(uint32_t elf_crc)
         if (n2GetGame() == N2_GAME_CSNEO)
         {
             // Counter-Strike Neo has no JVIO board of its own to answer to.
-            config.jvsIOType = SEGA_TYPE_3;
+            config.jvsIOType = NAMCO_N2_TYPE;
             config.gameReleaseYear = (char *)"2005";
             config.gameNativeResolutions = (char *)"1024x768";
             config.gameType = SHOOTING;
@@ -67,34 +63,7 @@ static int detectGame(uint32_t elf_crc)
         config.gameGroup = GROUP_WMMT3;
         return 0;
     }
-#endif
-
-    const GameData *gameData = getGameData(elf_crc);
-
-    if (gameData)
-    {
-        config.gameTitle = (char *)gameData->gameTitle;
-        config.gameShortTitle = (char *)gameData->gameShortTitle;
-        config.gameDVP = (char *)gameData->gameDVP;
-        config.gameID = (char *)gameData->gameID;
-        config.gameReleaseYear = (char *)gameData->gameReleaseYear;
-        config.gameNativeResolutions = (char *)gameData->gameNativeResolutions;
-        config.gameStatus = gameData->gameStatus;
-        config.jvsIOType = gameData->jvsIOType;
-        config.gameType = gameData->gameType;
-        config.width = gameData->width;
-        config.height = gameData->height;
-        config.gameGroup = gameData->gameGroup;
-        config.emulateRideboard = gameData->emulateRideboard;
-        config.emulateDriveboard = gameData->emulateDriveboard;
-        config.emulateMotionboard = gameData->emulateMotionboard;
-        config.emulateHW210CardReader = gameData->emulateHW210CardReader;
-        config.emulateIDCardReader = gameData->emulateIDCardReader;
-        config.emulateTouchscreen = gameData->emulateTouchscreen;
-        config.gameLindberghColour = gameData->gameLindberghColour;
-        return 0;
-    }
-
+    log_error("Unsupported ELF: pacloader did not detect a Namco System N2 title");
     config.crc32 = UNKNOWN;
     return 1;
 }
@@ -114,11 +83,6 @@ char *getGameId()
     return config.gameID;
 }
 
-int getGameLindberghColour()
-{
-    return config.gameLindberghColour;
-}
-
 char *getGameReleaseYear()
 {
     return config.gameReleaseYear;
@@ -127,11 +91,6 @@ char *getGameReleaseYear()
 char *getGameNativeResolutions()
 {
     return config.gameNativeResolutions;
-}
-
-const char *getLindberghColourString(Colour lindberghColour)
-{
-    return LindbergColourStrings[lindberghColour];
 }
 
 const char *getGameRegionString(GameRegion region)
@@ -155,11 +114,12 @@ void toLowerCase(char *str)
 
 void setDefaultValues(EmulatorConfig *cfg)
 {
-    cfg->platform = ARCADE_PLATFORM_LINDBERGH;
+    cfg->platform = ARCADE_PLATFORM_NAMCO_N2;
     strcpy(cfg->namcoN2.dongleId, "");
     strcpy(cfg->namcoN2.dongleId2, "");
     cfg->namcoN2.debugMode = 0;
     cfg->namcoN2.forceFeedbackEnabled = 0;
+    cfg->namcoN2.forceFeedbackDiagnostics = 0;
     // The wheel swings its whole electrical range; the pedals stay inside the
     // window clInputDeviceJamma calibrates them in.
     cfg->namcoN2.steering.minimum = 0;
@@ -198,7 +158,6 @@ void setDefaultValues(EmulatorConfig *cfg)
     strcpy(cfg->idCardFolder, "");
     cfg->emulateJVS = 1;
     cfg->fullscreen = 0;
-    cfg->lindberghColour = YELLOW;
     strcpy(cfg->eepromPath, "eeprom.bin");
     strcpy(cfg->sramPath, "sram.bin");
     strcpy(cfg->libCgPath, "");
@@ -223,10 +182,9 @@ void setDefaultValues(EmulatorConfig *cfg)
     cfg->gameID = "XXXX";
     cfg->gameDVP = "DVP-XXXX";
     cfg->gameType = SHOOTING;
-    cfg->gameLindberghColour = YELLOW;
     cfg->gameReleaseYear = "";
     cfg->gameNativeResolutions = "";
-    cfg->jvsIOType = SEGA_TYPE_3;
+    cfg->jvsIOType = NAMCO_N2_TYPE;
     cfg->GPUVendor = AUTO_DETECT_GPU;
     cfg->fpsLimiter = 1;
     cfg->fpsTarget = 60.0f;
@@ -235,13 +193,6 @@ void setDefaultValues(EmulatorConfig *cfg)
     cfg->disableBuiltinFont = 0;
     cfg->disableBuiltinLogos = 0;
     cfg->hideCursor = 1;
-    cfg->customCursorEnabled = 0;
-    strcpy(cfg->customCursor, "");
-    cfg->customCursorWidth = 32;
-    cfg->customCursorHeight = 32;
-    strcpy(cfg->touchCursor, "");
-    cfg->touchCursorWidth = 32;
-    cfg->touchCursorHeight = 32;
     cfg->mj4EnabledAtT = 0;
     cfg->enableNetworkPatches = 1;
     strcpy(cfg->idIpSeat1, "");
@@ -265,13 +216,6 @@ void setDefaultValues(EmulatorConfig *cfg)
     cfg->whiteBorderPercentage = 0.02f;
     cfg->blackBorderPercentage = 0.0f;
     cfg->inputMode = 1;
-    cfg->enableCrosshairs = 0;
-    cfg->gsevoCrosshairAlwaysOn = 0;
-    cfg->gsevoCrosshairAlwaysOff = 0;
-    strcpy(cfg->p1CrossHairPath, "");
-    strcpy(cfg->p2CrossHairPath, "");
-    cfg->customCrossHairWidth = 64;
-    cfg->customCrossHairHeight = 64;
 }
 
 static const char *getValue(const IniConfig *ini, const char *sectionName, const char *key)
@@ -390,6 +334,8 @@ void applyIniConfig(EmulatorConfig *config, const IniConfig *ini)
     // emitted into a new linuxloader.ini because the defaults match N2 hardware.
     config->namcoN2.forceFeedbackEnabled =
         getInt(ini, "NamcoN2", "FFB_ENABLED", config->namcoN2.forceFeedbackEnabled);
+    config->namcoN2.forceFeedbackDiagnostics = getInt(
+        ini, "NamcoN2", "FFB_DIAGNOSTICS", config->namcoN2.forceFeedbackDiagnostics);
     config->namcoN2.steering.minimum =
         getInt(ini, "NamcoN2", "STEERING_RAW_MIN", config->namcoN2.steering.minimum);
     config->namcoN2.steering.maximum =
@@ -494,15 +440,6 @@ void applyIniConfig(EmulatorConfig *config, const IniConfig *ini)
     config->disableBuiltinFont = getInt(ini, "Graphics", "DISABLE_BUILTIN_FONT", config->disableBuiltinFont);
     config->disableBuiltinLogos = getInt(ini, "Graphics", "DISABLE_BUILTIN_LOGOS", config->disableBuiltinLogos);
 
-    // [Cursor]
-    config->customCursorEnabled = getInt(ini, "Cursor", "CUSTOM_CURSOR_ENABLED", config->customCursorEnabled);
-    getString(ini, "Cursor", "CUSTOM_CURSOR", config->customCursor, MAX_PATH_LENGTH);
-    config->customCursorWidth = getInt(ini, "Cursor", "CUSTOM_CURSOR_WIDTH", config->customCursorWidth);
-    config->customCursorHeight = getInt(ini, "Cursor", "CUSTOM_CURSOR_HEIGHT", config->customCursorHeight);
-    getString(ini, "Cursor", "TOUCH_CURSOR", config->touchCursor, MAX_PATH_LENGTH);
-    config->touchCursorWidth = getInt(ini, "Cursor", "TOUCH_CURSOR_WIDTH", config->touchCursorWidth);
-    config->touchCursorHeight = getInt(ini, "Cursor", "TOUCH_CURSOR_HEIGHT", config->touchCursorHeight);
-
     // [GameSpecific]
     config->phScreenMode = getInt(ini, "GameSpecific", "PRIMEVAL_HUNT_SCREEN_MODE", config->phScreenMode);
     config->phTestScreenSingle = getInt(ini, "GameSpecific", "PRIMEVAL_HUNT_TEST_SCREEN_SINGLE", config->phTestScreenSingle);
@@ -515,36 +452,8 @@ void applyIniConfig(EmulatorConfig *config, const IniConfig *ini)
         getFloat(ini, "GameSpecific", "ID_STEERING_REDUCTION_PERCENTAGE", config->idSteeringPercentageReduction);
     config->outrunLensGlareEnabled = getInt(ini, "GameSpecific", "OUTRUN_LENS_GLARE_ENABLED", config->outrunLensGlareEnabled);
 
-    // [CrossHairs]
-    config->enableCrosshairs = getInt(ini, "CrossHairs", "ENABLE_CROSSHAIRS", config->enableCrosshairs);
-    getString(ini, "CrossHairs", "P1_CROSSHAIR_PATH", config->p1CrossHairPath, MAX_PATH_LENGTH);
-    getString(ini, "CrossHairs", "P2_CROSSHAIR_PATH", config->p2CrossHairPath, MAX_PATH_LENGTH);
-    config->customCrossHairWidth = getInt(ini, "CrossHairs", "CUSTOM_CROSSHAIRS_WIDTH", config->customCrossHairWidth);
-    config->customCrossHairHeight = getInt(ini, "CrossHairs", "CUSTOM_CROSSHAIRS_HEIGHT", config->customCrossHairHeight);
-    config->gsevoCrosshairAlwaysOn = getInt(ini, "CrossHairs", "GSEVO_CROSSHAIR_ALWAYS_ON", config->gsevoCrosshairAlwaysOn);
-    config->gsevoCrosshairAlwaysOff = getInt(ini, "CrossHairs", "GSEVO_CROSSHAIR_ALWAYS_OFF", config->gsevoCrosshairAlwaysOff);
-
     config->showDebugMessages = getInt(ini, "System", "DEBUG_MSGS", config->showDebugMessages);
     config->useAltJvsPassthrough = getInt(ini, "System", "USE_ALT_JVS_PASSTHROUGH", config->useAltJvsPassthrough);
-    const char *colourRaw = getValue(ini, "System", "LINDBERGH_COLOUR");
-    if (colourRaw)
-    {
-        char cleanBuffer[32];
-        char *colourStr = cleanValue(colourRaw, cleanBuffer, sizeof(cleanBuffer));
-        for (char *p = colourStr; *p; ++p)
-            *p = toupper(*p);
-        if (strcmp(colourStr, "RED") == 0)
-            config->lindberghColour = RED;
-        else if (strcmp(colourStr, "YELLOW") == 0)
-            config->lindberghColour = YELLOW;
-        else if (strcmp(colourStr, "BLUE") == 0)
-            config->lindberghColour = BLUE;
-        else if (strcmp(colourStr, "SILVER") == 0)
-            config->lindberghColour = SILVER;
-        else if (strcmp(colourStr, "REDEX") == 0)
-            config->lindberghColour = REDEX;
-    }
-
     // [Network]
     config->enableNetworkPatches = getInt(ini, "Network", "ENABLE_NETWORK_PATCHES", config->enableNetworkPatches);
     getString(ini, "Network", "ID_IP_SEAT_1", config->idIpSeat1, 16);
@@ -628,10 +537,7 @@ int initConfig(const char *configFilePath)
     config.crc32 = partialElfCrc;
     if (detectGame(config.crc32) != 0)
     {
-        log_error("Unsure what game with CRC 0x%X is. Please submit this new game to the GitHub repository: "
-                 "https://github.com/lindbergh-loader/lindbergh-loader/issues/"
-                 "new?title=Please+add+new+game+0x%X&body=I+tried+to+launch+the+following+game:\n",
-                 config.crc32, config.crc32);
+        log_error("Unsupported N2/ES1 game CRC: 0x%X", config.crc32);
     }
 
     config.inputMode = 0;
@@ -647,13 +553,6 @@ int initConfig(const char *configFilePath)
         {
             strncpy(filePath, CONFIG_PATH, PATH_MAX - 1);
         }
-#ifdef _LINUX_
-        else
-        {
-            // Fallback to legacy path to preserve backward compatibility with the old loader
-            strncpy(filePath, "lindbergh.ini", PATH_MAX - 1);
-        }
-#endif
     }
     filePath[PATH_MAX - 1] = '\0';
     IniConfig *ini = iniLoad(filePath);
@@ -665,9 +564,6 @@ int initConfig(const char *configFilePath)
     }
 
     applyIniConfig(&config, ini);
-
-    if (config.customCursorEnabled && (strcmp(config.customCursor, "") != 0 || strcmp(config.touchCursor, "") != 0))
-        config.hideCursor = 0;
 
     iniFree(ini);
 

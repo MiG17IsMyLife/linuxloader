@@ -1,0 +1,72 @@
+set(PACLOADER_SOURCES
+    src/glad/src/gl.c
+
+    src/loader/initPacloader.c
+    src/loader/mainShared.c
+    src/loader/mainW.cpp
+
+    src/loader/config/config.c
+    src/loader/config/configIni.c
+    src/loader/config/iniParser.c
+    src/loader/frontend/frontendApi.c
+
+    src/loader/elfLoader/cppBridge.cpp
+    src/loader/elfLoader/elfLoader.cpp
+    src/loader/elfLoader/filesystemBridge.cpp
+    src/loader/elfLoader/gccBridge.cpp
+    src/loader/elfLoader/glHooks.cpp
+    src/loader/elfLoader/graphicsBridge.cpp
+    src/loader/elfLoader/ipcBridge.cpp
+    src/loader/elfLoader/libcBridge.cpp
+    src/loader/elfLoader/linuxStack.cpp
+    src/loader/elfLoader/mathBridge.cpp
+    src/loader/elfLoader/memoryManager.cpp
+    src/loader/elfLoader/networkBridge.cpp
+    src/loader/elfLoader/posixCompatBridge.cpp
+    src/loader/elfLoader/pthreadBridge.cpp
+    src/loader/elfLoader/regexBridge.cpp
+    src/loader/elfLoader/sdl12Bridge.cpp
+    src/loader/elfLoader/symbolResolver.cpp
+    src/loader/elfLoader/termiosBridge.cpp
+    src/loader/elfLoader/virtualDeviceRegistry.cpp
+    src/loader/elfLoader/pthread/pthreadBarrier.cpp
+    src/loader/elfLoader/pthread/pthreadCond.cpp
+    src/loader/elfLoader/pthread/pthreadEmu.cpp
+    src/loader/elfLoader/pthread/pthreadMapper.cpp
+    src/loader/elfLoader/pthread/pthreadMutex.cpp
+    src/loader/elfLoader/pthread/pthreadOnce.cpp
+    src/loader/elfLoader/pthread/pthreadRwlock.cpp
+    src/loader/elfLoader/pthread/pthreadSemaphore.cpp
+    src/loader/elfLoader/pthread/pthreadSpin.cpp
+    src/loader/elfLoader/pthread/pthreadThread.cpp
+    src/loader/elfLoader/pthread/pthreadTls.cpp
+
+    src/loader/graphics/blitStretching.c
+    src/loader/graphics/border.c
+    src/loader/graphics/fpsLimiter.c
+    src/loader/graphics/gluBridge.c
+    src/loader/graphics/gpuVendor.c
+    src/loader/graphics/pacloaderGraphics.c
+    src/loader/graphics/sdlCalls.c
+
+    src/loader/hardware/common/cardControl.c
+    src/loader/hardware/common/jvs.c
+    src/loader/hardware/ffb/sdlFfbBackend.c
+    src/loader/hardware/namco/n2/n2.cpp
+    src/loader/hardware/namco/n2/n2Audio.cpp
+    src/loader/hardware/namco/n2/n2CardReader.cpp
+    src/loader/hardware/namco/n2/n2CsNeo.cpp
+    src/loader/hardware/namco/n2/n2CsNeoPcb.cpp
+    src/loader/hardware/namco/n2/n2Hook.cpp
+    src/loader/hardware/namco/n2/n2Host.cpp
+    src/loader/hardware/namco/n2/n2Jvio.cpp
+    src/loader/hardware/namco/n2/n2Kickback.cpp
+    src/loader/hardware/namco/n2/n2SteeringIo.cpp
+    src/loader/hardware/namco/n2/n2VirtualDevices.cpp
+
+    src/loader/input/controlIniGen.c
+    src/loader/input/sdlInput.c
+    src/loader/log/log.c
+    src/loader/redirections/filesystemPacloader.c
+    src/loader/redirections/libcShared.c
+    src/loader/redirections/memory.c)

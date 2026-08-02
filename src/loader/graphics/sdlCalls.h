@@ -25,7 +25,6 @@ typedef struct SDLFramePresentOptions
 {
     const char *title;
     bool processEvents;
-    bool profileFrame;
     SDLFrameCallback beforeEvents;
     SDLFrameCallback beforeSwap;
     SDLFrameCallback afterPresent;

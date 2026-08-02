@@ -43,8 +43,8 @@ if defined NEW_PATH (
 echo.
 echo Setup Complete!
 
-md build-win32
-cd build-win32
+md build-pacloader 2>nul
+cd build-pacloader
 
 echo [5/5] Executing build inside MSYS2 shell...
 
@@ -53,9 +53,7 @@ echo [5/5] Executing build inside MSYS2 shell...
 set "CHERE_INVOKING=1"
 set "MSYSTEM=MINGW32"
 
-"%USR_BIN%\bash.exe" -lc "cmake .. -G 'MinGW Makefiles' && cmake --build ."
-
-copy c:\msys64\mingw32\bin\libwinpthread-1.dll C:\msys64\mingw32\lib\gcc\i686-w64-mingw32\16.1.0\
+"%USR_BIN%\bash.exe" -lc "cmake .. -G 'MinGW Makefiles' -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build . --parallel"
 
 if %ERRORLEVEL% EQU 0 (
     echo Build complete.

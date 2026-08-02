@@ -1,7 +1,0 @@
-[Desktop Entry]
-Name=Linux Loader
-Exec=linuxloader
-Icon=linuxloader
-Type=Application
-Categories=Utility;ConsoleOnly;
-Terminal=true

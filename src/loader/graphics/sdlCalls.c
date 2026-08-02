@@ -13,27 +13,19 @@
 #include <glad/gl.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_error.h>
-#include <SDL3_ttf/SDL_ttf.h>
-#include <SDL3_image/SDL_image.h>
 #include <stdbool.h>
 #include <unistd.h>
 
 #include "blitStretching.h"
 #include "../config/config.h"
-#include "crossHair.h"
 #include "fpsLimiter.h"
-#include "runtimeProfiler.h"
-#include "customCursor.h"
 #include "../input/sdlInput.h"
 #include "../hardware/common/jvs.h"
 #if defined(_WIN32) || defined(__MINGW32__)
 #include "../hardware/common/cardControl.h"
 #endif
-#include "../resources/LiberationMono-Regular.h"
-#include "../resources/icon.h"
 #include "../log/log.h"
 #include "sdlCalls.h"
-#include "../input/wiimoteEvdev.h"
 
 extern uint32_t gId;
 extern int gGrp;
@@ -45,8 +37,6 @@ Display *x11Display = NULL;
 Window x11Window;
 #endif
 
-extern SDL_Cursor *customCursor;
-extern SDL_Cursor *touchCursor;
 
 bool creatingWindow = false;
 SDL_Window *g_SdlWindow = NULL;
@@ -56,9 +46,6 @@ bool sdlInputInitialized = false;
 int glutInitialized = 0;
 
 bool isFullScreen = false;
-bool sdlFontInit = false;
-SDL_Renderer *fontRenderer;
-TTF_Font *font;
 
 void GLAPIENTRY openglDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *message,
                                     const void *userParam)
@@ -86,21 +73,6 @@ int initSDL()
         return 1;
     }
 
-    if (gGrp == GROUP_OUTRUN_TEST || gGrp == GROUP_ID_SERVERBOX)
-    {
-        if (!TTF_Init())
-        {
-            log_error("SDL_ttf could not initialize! SDL_ttf Error: %s\n", SDL_GetError());
-            return 1;
-        }
-        SDL_IOStream *rw = SDL_IOFromConstMem(LiberationMonoRegular_ttf, LiberationMonoRegular_ttf_length);
-        float fontSize = 16.0;
-        if (gWidth > 640)
-            fontSize = fontSize * (((float)gWidth / 640.0f) + ((float)gHeight / 480.0f)) / 2.0f;
-
-        font = TTF_OpenFontIO(rw, 1, fontSize);
-        fontRenderer = SDL_CreateRenderer(g_SdlWindow, "");
-    }
     return 0;
 }
 
@@ -312,19 +284,7 @@ void startSDL()
 
     printf("  RESOLUTION: %dx%d\n", gWidth, gHeight);
 
-    loadCursors();
-    if (customCursor)
-        setCursor(customCursor);
-
-    if (getConfig()->enableCrosshairs &&
-        (gGrp == GROUP_HOD4 || gGrp == GROUP_HOD4_TEST || gGrp == GROUP_HOD4_SP || gGrp == GROUP_HOD4_SP_TEST || gGrp == GROUP_RAMBO ||
-         gId == GHOST_SQUAD_EVOLUTION_SBNJ || gId == PRIMEVAL_HUNT_SBPP))
-        initCrossHairs();
-
-    if ((gId == MJ4_SBPN_REVG || gId == MJ4_EVO_SBTA || gId == QUIZ_AXA_SBMS || gId == QUIZ_AXA_SBUR_LIVE) &&
-        strcmp(getConfig()->touchCursor, "") != 0 && getConfig()->emulateTouchscreen)
-        setCursor(touchCursor);
-    else if (getConfig()->hideCursor)
+    if (getConfig()->hideCursor)
         SDL_HideCursor();
 }
 
@@ -360,17 +320,12 @@ int presentSDLFrame(const SDLFramePresentOptions *options)
     if (!options)
         return 0;
 
-    if (options->profileFrame)
-        runtimeProfilerFrameBoundary();
 
     if (options->beforeEvents)
         options->beforeEvents(options->userdata);
 
-    uint64_t phase = runtimeProfilerPhaseBegin();
     if (options->processEvents)
         pollEvents();
-    if (options->profileFrame)
-        runtimeProfilerPhaseEnd(RUNTIME_PROFILE_INPUT, phase);
 
     if (options->beforeSwap)
         options->beforeSwap(options->userdata);
@@ -379,22 +334,13 @@ int presentSDLFrame(const SDLFramePresentOptions *options)
     if (!window)
         return 0;
 
-    phase = runtimeProfilerPhaseBegin();
     SDL_GL_SwapWindow(window);
-    if (options->profileFrame)
-        runtimeProfilerPhaseEnd(RUNTIME_PROFILE_SWAP, phase);
 
-    phase = runtimeProfilerPhaseBegin();
     if (getConfig()->fpsLimiter)
         frameTiming();
-    if (options->profileFrame)
-        runtimeProfilerPhaseEnd(RUNTIME_PROFILE_LIMITER, phase);
 
-    phase = runtimeProfilerPhaseBegin();
     if (options->title)
         showFpsInWindowTitle(options->title);
-    if (options->profileFrame)
-        runtimeProfilerPhaseEnd(RUNTIME_PROFILE_TITLE, phase);
 
     if (options->afterPresent)
         options->afterPresent(options->userdata);
@@ -408,21 +354,6 @@ void sdlQuit()
     usleep(50000);
     setSwitch(SYSTEM, BUTTON_TEST, 0);
     usleep(50000);
-
-    if (TTF_WasInit())
-    {
-        if (font)
-        {
-            TTF_CloseFont(font);
-            font = NULL;
-        }
-        TTF_Quit();
-    }
-    if (fontRenderer)
-    {
-        SDL_DestroyRenderer(fontRenderer);
-        fontRenderer = NULL;
-    }
 
     if (g_SdlContext)
     {

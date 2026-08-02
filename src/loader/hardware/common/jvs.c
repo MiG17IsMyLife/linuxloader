@@ -35,25 +35,6 @@ JVSIO io = {0};
  */
 int initJVS()
 {
-    switch (getConfig()->jvsIOType)
-    {
-    case SEGA_TYPE_1:
-    {
-        io.capabilities.switches = 13;
-        io.capabilities.coins = 2;
-        io.capabilities.players = 2;
-        io.capabilities.analogueInBits = 8;
-        io.capabilities.rightAlignBits = 0;
-        io.capabilities.analogueInChannels = 8;
-        io.capabilities.generalPurposeOutputs = 6;
-        io.capabilities.commandVersion = 17;
-        io.capabilities.jvsVersion = 48;
-        io.capabilities.commsVersion = 16;
-        strcpy(io.capabilities.name, "SEGA ENTERPRISESLTD.;I/O BD JVS;837-13551;Ver1.00;98/10");
-    }
-    break;
-
-    case NAMCO_N2_TYPE:
     {
         /*
          * clSystemN2::initSystemN2() claims seven functions in a row through
@@ -92,25 +73,6 @@ int initJVS()
                 sizeof(io.capabilities.name) - 1);
         io.capabilities.name[sizeof(io.capabilities.name) - 1] = '\0';
     }
-    break;
-
-    default:
-    case SEGA_TYPE_3:
-    {
-        io.capabilities.switches = 14;
-        io.capabilities.coins = 2;
-        io.capabilities.players = 2;
-        io.capabilities.analogueInBits = 10;
-        io.capabilities.rightAlignBits = 0;
-        io.capabilities.analogueInChannels = 8;
-        io.capabilities.generalPurposeOutputs = 20;
-        io.capabilities.commandVersion = 19;
-        io.capabilities.jvsVersion = 48;
-        io.capabilities.commsVersion = 16;
-        strcpy(io.capabilities.name, "SEGA CORPORATION;I/O BD JVS;837-14572;Ver1.00;2005/10");
-    }
-    break;
-    }
 
     if (!io.capabilities.rightAlignBits)
     {
@@ -138,13 +100,6 @@ int initJVS()
     /* Float the sense line ready for connection */
     senseLine = 3;
 
-    /* Center the controller for after burner climax (ghost squad evo also uses this IO) */
-    if (getConfig()->jvsIOType == SEGA_TYPE_1)
-    {
-        setAnalogue(ANALOGUE_1, 0x80);
-        setAnalogue(ANALOGUE_2, 0x80);
-        setAnalogue(ANALOGUE_3, 0x80);
-    }
     return 0;
 }
 

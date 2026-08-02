@@ -1,5 +1,5 @@
 #if defined(_WIN32) || defined(__MINGW32__)
-#include "../redirections/filesystemShared.h"
+#include "../redirections/filesystem.h"
 #include "filesystemBridge.hpp"
 #include "libcBridge.hpp"
 #include "networkBridge.hpp"
@@ -205,8 +205,6 @@ namespace FileSystemBridge
     int bridgeFeof(FILE *stream)
     {
         log_trace("Intercepted feof: %p", stream);
-        if (stream == fileHooks[CPUINFO])
-            return fileRead[CPUINFO] >= 4;
         return feof(stream);
     }
 

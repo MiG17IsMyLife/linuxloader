@@ -19,7 +19,6 @@
 #endif
 
 #include "config/configIni.h"
-#include "input/evdevInput.h"
 #include "input/controlIniGen.h"
 #include "input/sdlInput.h"
 #include "log/log.h"
@@ -436,12 +435,12 @@ void printCreateUsage(char *programName)
     printf("  %s --create <sub-option> [output_path] [output_filename]\n\n", myBasename(programName));
     printf("Arguments:\n");
     printf("  sub-option          The type of file to create. Can be one of:\n");
-    printf("                        config   (for lindbergh.ini)\n");
+    printf("                        config   (for linuxloader.ini)\n");
     printf("                        controls (for controls.ini)\n");
     printf("  output_path         (Optional) The directory where the file will be created.\n");
     printf("                      If not provided, the file is created in the current directory.\n");
     printf("  output_filename     (Optional) The name of the file to be created. Must end with .ini.\n");
-    printf("                      If not provided, the default name will be used (lindbergh.ini or controls.ini).\n\n");
+    printf("                      If not provided, the default name will be used (linuxloader.ini or controls.ini).\n\n");
     printf("Examples:\n");
     printf("  %s --create config\n", myBasename(programName));
 #ifdef __linux__

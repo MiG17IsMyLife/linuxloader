@@ -5,12 +5,36 @@
 #include <string>
 #include <unordered_map>
 #include "glHooks.hpp"
-#include "../graphics/shaderPatches.h"
-#include "../patching/patchResolution.h"
-#include "../graphics/crossHair.h"
+#include "../graphics/pacloaderGraphics.h"
 
 static thread_local uint32_t lastCompressedImageSize = 0;
 static thread_local uint32_t pendingCompressedImageSize = 0;
+
+extern "C" void __attribute__((cdecl)) bridgeglOrtho(
+    GLdouble left, GLdouble right, GLdouble bottom, GLdouble top,
+    GLdouble nearPlane, GLdouble farPlane)
+{
+    glad_glOrtho(left, right, bottom, top, nearPlane, farPlane);
+}
+
+extern "C" void __attribute__((cdecl)) bridgeglViewport(
+    GLint x, GLint y, GLsizei width, GLsizei height)
+{
+    glad_glViewport(x, y, width, height);
+}
+
+extern "C" void __attribute__((cdecl)) bridgeglTexImage2D(
+    GLenum target, GLint level, GLint internalFormat, GLsizei width,
+    GLsizei height, GLint border, GLenum format, GLenum type, const void *pixels)
+{
+    glad_glTexImage2D(target, level, internalFormat, width, height, border, format, type, pixels);
+}
+
+extern "C" void __attribute__((cdecl)) bridgeglTexParameteri(
+    GLenum target, GLenum name, GLint value)
+{
+    glad_glTexParameteri(target, name, value);
+}
 
 uint32_t GLHooks_ConsumeCompressedImageSize()
 {
@@ -2088,7 +2112,7 @@ void *GLHooks_GetProcAddress(const char *procName)
     if (strcmp(procName, "glDisable") == 0)
         return (void *)&bridgeglDisable;
     if (strcmp(procName, "glDrawArrays") == 0)
-        return (void *)&bridgeglDrawArrays;
+        return (void *)&wrap_glDrawArrays;
     if (strcmp(procName, "glGenFencesNV") == 0)
         return (void *)&bridgeglGenFencesNV;
     if (strcmp(procName, "glDeleteFencesNV") == 0)

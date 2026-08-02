@@ -34,7 +34,6 @@
 #include "symbolResolver.hpp"
 #include "elfLoader.hpp"
 #include "../log/log.h"
-#include "../patching/patch.h"
 #include "../hardware/namco/n2/n2.h"
 
 extern "C" void __gmon_start__()
@@ -535,7 +534,7 @@ extern "C" void HandleUnresolvedSymbol(const char *symbolName, void *callerAddre
     char msg[512];
     snprintf(msg, sizeof(msg), "Unresolved symbol called: %s\nCaller Address: %p\n\nThe loader will now terminate.", symbolName,
              callerAddress);
-    MessageBoxA(NULL, msg, "Lindbergh Loader Error", MB_ICONERROR | MB_OK);
+    MessageBoxA(NULL, msg, "pacloader error", MB_ICONERROR | MB_OK);
     ExitProcess(1);
 }
 
@@ -789,11 +788,6 @@ bool SymbolResolver::ProcessAllRelocations()
 
 void SymbolResolver::PatchAllSOs()
 {
-    for (auto &patch : m_PendingSOPatches)
-    {
-        log_info("Applying deferred SO patch: base=0x%08X path=%s", (uint32_t)patch.first, patch.second.c_str());
-        patchSO(patch.first, patch.second.c_str());
-    }
     m_PendingSOPatches.clear();
 }
 

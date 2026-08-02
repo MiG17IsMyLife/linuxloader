@@ -6,8 +6,6 @@
 #include <windows.h>
 #include <libgen.h>
 
-#include "elfLoader/alsa2sdlBridge.hpp"
-#include "elfLoader/segaapiBridge.hpp"
 #include "elfLoader/gccBridge.hpp"
 #include "elfLoader/ipcBridge.hpp"
 #include "elfLoader/posixCompatBridge.hpp"
@@ -26,8 +24,8 @@
 #include "elfLoader/pthread/pthreadEmu.hpp"
 #include "log/log.h"
 #include "graphics/gpuVendor.h"
+#include "frontend/frontendApi.h"
 #include "init.h"
-#include "patching/patch.h"
 #include "input/sdlInput.h"
 #include "hardware/namco/n2/n2.h"
 #include "config/config.h"
@@ -75,14 +73,13 @@ void initBridges()
     IpcBridge::initBridges();
     PosixCompatBridge::initBridges();
     Sdl12Bridge::initBridges();
-    SegaApiBridge::initBridges();
-    Alsa2SdlBridge::initBridges();
     RegexBridge::initBridges();
     MathBridge::initBridges();
 }
 
 int main(int argc, char *argv[], char *envp[])
 {
+    pacFrontendInitialize();
     /*
      * Warnings and above by default, but a crash usually needs the lines under
      * that - which shared object landed at which address, which symbol was
@@ -116,6 +113,8 @@ int main(int argc, char *argv[], char *envp[])
     log_info("Parsing arguments...\n");
     if (parseArgs(argc, argv, command, originalDir, gameELF, libraryPath) != PARSE_ARGS_SUCCESS)
         return EXIT_SUCCESS;
+
+    pacFrontendReport("loading", gameELF);
 
     if (configPath)
         strncpy(g_n2ConfigPath, configPath, sizeof(g_n2ConfigPath) - 1);
@@ -179,6 +178,7 @@ int main(int argc, char *argv[], char *envp[])
             return true;
         }))
     {
+        pacFrontendReport("error", "ELF load failed");
         log_fatal("Failed to load ELF file: %s", elfPath);
         return 1;
     }
@@ -228,10 +228,12 @@ int main(int argc, char *argv[], char *envp[])
 
     if (!loader.Execute(final_argc, final_argv_arr, envp))
     {
+        pacFrontendReport("error", "ELF execution failed");
         log_error("Failed to execute ELF file.");
         return 1;
     }
 
+    pacFrontendReport("stopped", "ELF execution finished");
     log_info("ELF Execution Finished");
     return 0;
 }

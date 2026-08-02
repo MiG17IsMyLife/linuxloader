@@ -16,17 +16,14 @@
 
 #include "../graphics/blitStretching.h"
 #include "../config/config.h"
-#include "../graphics/crossHair.h"
-#include "../hardware/common/forceFeedback.h"
+#include "../hardware/ffb/sdlFfbBackend.h"
 #include "../hardware/common/cardControl.h"
 #include "../config/iniParser.h"
 #include "sdlInput.h"
 #include "../hardware/common/jvs.h"
 #include "../log/log.h"
-#include "../hardware/lindbergh/touchScreen.h"
 #include "../graphics/sdlCalls.h"
 #include "../mainShared.h"
-#include "wiimoteEvdev.h"
 
 // --- GLOBAL STATE AND MAPPINGS ---
 ActionState gActionStates[MAX_ENTITIES][NUM_LOGICAL_ACTIONS];
@@ -1856,6 +1853,9 @@ void processSdlEvent(const SDL_Event *e)
                     {
                         bool isActive = (e->type == SDL_EVENT_MOUSE_BUTTON_DOWN);
                         updateBindingState(binding, isActive, isActive ? 1.0f : 0.0f);
+#if defined(PACLOADER_BUILD)
+                        addActionToDirtyList(binding->player, binding->action);
+#else
                         // Special behavior for shooting games requiring explicit mouse clicks
                         int x, y;
                         if (gId == PRIMEVAL_HUNT_SBPP && getConfig()->emulateTouchscreen &&
@@ -1883,10 +1883,13 @@ void processSdlEvent(const SDL_Event *e)
                                 addActionToDirtyList(binding->player, binding->action);
                             }
                         }
+#endif
                     }
                 }
+#if !defined(PACLOADER_BUILD)
                 if (gameType == MAHJONG && getConfig()->emulateTouchscreen)
                     handleMahjongTouch(e, drawableW, drawableH);
+#endif
             }
         }
         break;
@@ -1896,6 +1899,7 @@ void processSdlEvent(const SDL_Event *e)
             float mY = e->motion.y;
             float posX = 0.0f, posY = 0.0f;
 
+#if !defined(PACLOADER_BUILD)
             if (gId == PRIMEVAL_HUNT_SBPP)
             {
                 int x, y;
@@ -1908,6 +1912,7 @@ void processSdlEvent(const SDL_Event *e)
                 posY = ((float)(motY - phY) / (float)phH);
             }
             else
+#endif
             {
                 if (mX <= dest.X)
                     posX = 0;
@@ -2208,6 +2213,7 @@ void processChangedActions()
                     (gGrp == GROUP_ID4_EXP || gGrp == GROUP_ID4_JAP || gGrp == GROUP_ID5))
                     state->analogValue = (state->analogValue - 0.5f) * (getConfig()->idSteeringPercentageReduction / 100.0f) + 0.5f;
 
+#if !defined(PACLOADER_BUILD)
                 if (p1CrossHairInitialized && (map->jvsInput == ANALOGUE_1 || map->jvsInput == ANALOGUE_2))
                 {
                     static float lastAnalogue1 = 0.0f;
@@ -2237,6 +2243,7 @@ void processChangedActions()
 
                     updateCrosshairPosition(player - 1, xPos, yPos);
                 }
+#endif
 
                 setAnalogue(map->jvsInput, (int)(state->analogValue * jvsAnalogueMaxValue));
                 break;

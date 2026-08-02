@@ -95,15 +95,6 @@
 
 typedef enum
 {
-    YELLOW,
-    RED,
-    BLUE,
-    SILVER,
-    REDEX
-} Colour;
-
-typedef enum
-{
     WORKING,
     NOT_WORKING
 } GameStatus;
@@ -150,8 +141,8 @@ typedef enum
 
 typedef enum
 {
-    ARCADE_PLATFORM_LINDBERGH,
-    ARCADE_PLATFORM_NAMCO_N2
+    ARCADE_PLATFORM_NAMCO_N2,
+    ARCADE_PLATFORM_NAMCO_ES1
 } ArcadePlatform;
 
 typedef enum
@@ -193,13 +184,6 @@ typedef struct
 
 typedef enum
 {
-    SEGA_TYPE_1,
-    SEGA_TYPE_3,
-    /*
-     * Namco System N2. The counts are the ones clSystemN2::initSystemN2()
-     * claims through n2JvioSetFuncIo(); a function the board reports as
-     * absent is refused there and the cabinet then runs without it.
-     */
     NAMCO_N2_TYPE
 } JVSIOType;
 
@@ -300,6 +284,7 @@ typedef struct
     char dongleId2[13];
     int debugMode;
     int forceFeedbackEnabled;
+    int forceFeedbackDiagnostics;
     /*
      * Raw counts the cabinet's potentiometers report at each end of their
      * travel. The test menu's steering initialisation screen shows these
@@ -344,7 +329,6 @@ typedef struct
     int width;
     int height;
     int boostRenderRes;
-    Colour lindberghColour;
     GameStatus gameStatus;
     GameType gameType;
     GameGroup gameGroup;
@@ -358,7 +342,6 @@ typedef struct
     char *gameTitle;
     char *gameShortTitle;
     char *gameDVP;
-    Colour gameLindberghColour;
     char *gameReleaseYear;
     char *gameNativeResolutions;
     GpuType GPUVendor;
@@ -378,13 +361,6 @@ typedef struct
     int disableBuiltinFont;
     int disableBuiltinLogos;
     int hideCursor;
-    int customCursorEnabled;
-    char customCursor[MAX_PATH_LENGTH];
-    int customCursorWidth;
-    int customCursorHeight;
-    char touchCursor[MAX_PATH_LENGTH];
-    int touchCursorWidth;
-    int touchCursorHeight;
     int mj4EnabledAtT;
     int enableNetworkPatches;
     char idIpSeat1[16];
@@ -406,13 +382,6 @@ typedef struct
     float whiteBorderPercentage;
     float blackBorderPercentage;
     int borderEnabled;
-    int enableCrosshairs;
-    int gsevoCrosshairAlwaysOn;
-    int gsevoCrosshairAlwaysOff;
-    char p1CrossHairPath[MAX_PATH_LENGTH];
-    char p2CrossHairPath[MAX_PATH_LENGTH];
-    int customCrossHairWidth;
-    int customCrossHairHeight;
 } EmulatorConfig;
 
 #ifdef __cplusplus
@@ -425,10 +394,8 @@ EmulatorConfig *getConfig();
 char *getGameName();
 char *getDvpName();
 char *getGameId();
-int getGameLindberghColour();
 char *getGameReleaseYear();
 char *getGameNativeResolutions();
-const char *getLindberghColourString(Colour lindberghColour);
 const char *getGameRegionString(GameRegion region);
 const char *getGpuTypeString(GpuType gpuType);
 extern SDL_Keycode getSDLKeycode(const char *input);

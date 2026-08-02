@@ -9,7 +9,6 @@
 #include "blitStretching.h"
 #include "../config/config.h"
 #include "../log/log.h"
-#include "../patching/patchResolution.h"
 // #include "glInitFunctions.h"
 
 #define CHECK_GL(msg)                                                                                                                      \
@@ -52,40 +51,12 @@ void initBlitting()
     blitInitializeFbo();
     dest.gameScale = 1.0f;
 
-    if(gGrp == GROUP_OUTRUN && getConfig()->width == 640)
-        gameIsOutrunChihiroMode = 1;
 }
 
 void blitSetWidthandHeightSize()
 {
-    if (gGrp == GROUP_ID4_EXP || gGrp == GROUP_ID4_JAP || gGrp == GROUP_ID5)
-    {
-        if (isTestMode())
-        {
-            blitWidth = 1360;
-            blitHeight = 768;
-        }
-        else
-        {
-            blitWidth = gWidth;
-            blitHeight = gHeight;
-        }
-    }
-    else if (gId == GHOST_SQUAD_EVOLUTION_SBNJ || gGrp == GROUP_VT3_TEST)
-    {
-        blitWidth = 640;
-        blitHeight = 480;
-    }
-    else if (gId == QUIZ_AXA_SBMS || gId == QUIZ_AXA_SBUR_LIVE || gId == MJ4_SBPN_REVG || gId == MJ4_EVO_SBTA)
-    {
-        blitWidth = 1024;
-        blitHeight = 768;
-    }
-    else
-    {
-        blitWidth = gWidth;
-        blitHeight = gHeight;
-    }
+    blitWidth = gWidth;
+    blitHeight = gHeight;
 }
 
 int blitInitializeFbo()

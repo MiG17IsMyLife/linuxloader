@@ -15,6 +15,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -25,7 +26,7 @@
 #include <SDL3/SDL.h>
 
 #include "../../../config/config.h"
-#include "../../../redirections/filesystemShared.h"
+#include "../../../redirections/filesystem.h"
 #include "../../../elfLoader/symbolResolver.hpp"
 #include "../../../elfLoader/glHooks.hpp"
 #include "../../../graphics/sdlCalls.h"
@@ -526,7 +527,7 @@ int admGetDeviceAttribi(int, int attribute, int *value)
 int admSwapBuffers(AdmWindow *)
 {
     const SDLFramePresentOptions present = {
-        n2GetGameTitle(), true, true, nullptr, nullptr, nullptr, nullptr};
+        n2GetGameTitle(), true, nullptr, nullptr, nullptr, nullptr};
     return presentSDLFrame(&present);
 }
 
@@ -766,7 +767,8 @@ int createTextureHandle(void *self, int width, int height)
     if (isLoaderMainThread())
         return originalCreateTextureHandle(self, width, height);
 
-    TextureHandleCall *call = new TextureHandleCall{self, width, height};
+    TextureHandleCall *call = new TextureHandleCall{
+        self, width, height};
     if (dispatchOnLoaderMainThread(createTextureHandleOnMain, call))
         return 1;
 
@@ -794,7 +796,8 @@ int setTexture(void *self, int texture, int image)
     if (isLoaderMainThread())
         return originalSetTexture(self, texture, image);
 
-    SetTextureCall *call = new SetTextureCall{self, texture, image};
+    SetTextureCall *call = new SetTextureCall{
+        self, texture, image};
     if (dispatchOnLoaderMainThread(setTextureOnMain, call))
         return 1;
 

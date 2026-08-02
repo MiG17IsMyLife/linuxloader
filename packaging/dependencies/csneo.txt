@@ -1,0 +1,8 @@
+# Counter-Strike Neo native/guest runtime files.
+SDL3.dll
+ll-deps/cg.dll
+ll-deps/cgGL.dll
+ll-deps/libstdc++.so.5
+ll-deps/libstdc++.so.6
+ll-deps/openal32.dll
+ll-deps/zlib1.dll

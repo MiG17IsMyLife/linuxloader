@@ -372,7 +372,7 @@ extern "C"
             caption = getConfig()->gameTitle ? getConfig()->gameTitle : "";
 
         const SDLFramePresentOptions present = {
-            caption.c_str(), false, true, nullptr, nullptr, nullptr, nullptr};
+            caption.c_str(), false, nullptr, nullptr, nullptr, nullptr};
         (void)presentSDLFrame(&present);
     }
 
