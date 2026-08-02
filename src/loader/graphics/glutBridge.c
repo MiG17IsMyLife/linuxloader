@@ -16,7 +16,6 @@
 #include "border.h"
 #include "../config/config.h"
 #include "crossHair.h"
-#include "fpsLimiter.h"
 #include "../graphics/sdlCalls.h"
 #include "../hardware/lindbergh/touchScreen.h"
 
@@ -26,7 +25,6 @@ extern int gWidth;
 extern int gHeight;
 extern SDL_Window *g_SdlWindow;
 extern char current_text[256];
-extern double localFps;
 bool winHidden = true;
 
 static void *g_displayFunc = NULL;
@@ -79,12 +77,9 @@ void bridgeGlutMainLoopEvent(void)
     return;
 }
 
-void bridgeGlutSwapBuffers(void)
+static void prepareGlutFrame(void *userdata)
 {
-    EmulatorConfig *config = getConfig();
-
-    if (gGrp == GROUP_OUTRUN || gGrp == GROUP_OUTRUN_TEST)
-        pollEvents();
+    EmulatorConfig *config = (EmulatorConfig *)userdata;
 
     if ((p1CrossHairInitialized || p2CrossHairInitialized) && gId != GHOST_SQUAD_EVOLUTION_SBNJ)
         renderCrosshairs();
@@ -93,18 +88,22 @@ void bridgeGlutSwapBuffers(void)
 
     if (config->borderEnabled && gId != GHOST_SQUAD_EVOLUTION_SBNJ)
         drawGameBorder(drawableW, drawableH, config->whiteBorderPercentage, config->blackBorderPercentage);
+}
 
-    SDL_GL_SwapWindow(g_SdlWindow);
-
-    if (config->fpsLimiter)
-        frameTiming();
-
-    static char windowTitle[256] = {0};
-    sprintf(windowTitle, "%s - FPS: %.2f", getGameName(), calculateFps());
-    SDL_SetWindowTitle(g_SdlWindow, windowTitle);
-
+static void finishGlutFrame(void *userdata)
+{
+    (void)userdata;
     if (gId == MJ4_SBPN_REVG || gId == MJ4_EVO_SBTA)
         mj4TouchHolding();
+}
+
+void bridgeGlutSwapBuffers(void)
+{
+    EmulatorConfig *config = getConfig();
+    const bool processEvents = gGrp == GROUP_OUTRUN || gGrp == GROUP_OUTRUN_TEST;
+    const SDLFramePresentOptions present = {
+        getGameName(), processEvents, true, NULL, prepareGlutFrame, finishGlutFrame, config};
+    presentSDLFrame(&present);
 }
 
 int bridgeGlutEnterGameMode(void)

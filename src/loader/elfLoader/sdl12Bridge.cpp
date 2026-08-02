@@ -3,7 +3,6 @@
 #include "sdl12Bridge.hpp"
 #include "symbolResolver.hpp"
 #include "../config/config.h"
-#include "../graphics/fpsLimiter.h"
 #include "../graphics/sdlCalls.h"
 #include "../log/log.h"
 
@@ -274,7 +273,7 @@ extern "C"
             log_info("SDL 1.2: vsync suppressed; [Graphics] FPS_TARGET drives the frame rate");
             interval = 0;
         }
-        return SDL_GL_SetSwapInterval(interval);
+        return setSDLSwapInterval(interval);
     }
 
     int bridgeSdl12GLSetAttribute(int attribute, int value)
@@ -361,15 +360,6 @@ extern "C"
      */
     void bridgeSdl12GLSwapBuffers()
     {
-        SDL_Window *window = getSDLWindow();
-        if (!window)
-            return;
-
-        SDL_GL_SwapWindow(window);
-
-        if (getConfig()->fpsLimiter)
-            frameTiming();
-
         // The guest's own caption stays in front of the reading; one that never
         // names its window keeps the name the loader gave it.
         std::string caption;
@@ -380,7 +370,9 @@ extern "C"
         if (caption.empty())
             caption = getConfig()->gameTitle ? getConfig()->gameTitle : "";
 
-        showFpsInWindowTitle(caption.c_str());
+        const SDLFramePresentOptions present = {
+            caption.c_str(), false, true, nullptr, nullptr, nullptr, nullptr};
+        (void)presentSDLFrame(&present);
     }
 
     /*

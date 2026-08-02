@@ -22,6 +22,7 @@
 #include "../config/config.h"
 #include "crossHair.h"
 #include "fpsLimiter.h"
+#include "runtimeProfiler.h"
 #include "customCursor.h"
 #include "../input/sdlInput.h"
 #include "../hardware/lindbergh/jvs.h"
@@ -337,9 +338,68 @@ SDL_GLContext getSDLContext()
     return g_SdlContext;
 }
 
-int makeSDLCurrent(SDL_Window *win, SDL_GLContext ctx)
+bool makeSDLCurrent(SDL_Window *win, SDL_GLContext ctx)
 {
     return SDL_GL_MakeCurrent(win, ctx);
+}
+
+bool setSDLSwapInterval(int interval)
+{
+    return SDL_GL_SetSwapInterval(interval);
+}
+
+bool runOnSDLMainThread(SDL_MainThreadCallback callback, void *userdata, bool waitComplete)
+{
+    if (!callback)
+        return false;
+    return SDL_RunOnMainThread(callback, userdata, waitComplete);
+}
+
+int presentSDLFrame(const SDLFramePresentOptions *options)
+{
+    if (!options)
+        return 0;
+
+    if (options->profileFrame)
+        runtimeProfilerFrameBoundary();
+
+    if (options->beforeEvents)
+        options->beforeEvents(options->userdata);
+
+    uint64_t phase = runtimeProfilerPhaseBegin();
+    if (options->processEvents)
+        pollEvents();
+    if (options->profileFrame)
+        runtimeProfilerPhaseEnd(RUNTIME_PROFILE_INPUT, phase);
+
+    if (options->beforeSwap)
+        options->beforeSwap(options->userdata);
+
+    SDL_Window *window = getSDLWindow();
+    if (!window)
+        return 0;
+
+    phase = runtimeProfilerPhaseBegin();
+    SDL_GL_SwapWindow(window);
+    if (options->profileFrame)
+        runtimeProfilerPhaseEnd(RUNTIME_PROFILE_SWAP, phase);
+
+    phase = runtimeProfilerPhaseBegin();
+    if (getConfig()->fpsLimiter)
+        frameTiming();
+    if (options->profileFrame)
+        runtimeProfilerPhaseEnd(RUNTIME_PROFILE_LIMITER, phase);
+
+    phase = runtimeProfilerPhaseBegin();
+    if (options->title)
+        showFpsInWindowTitle(options->title);
+    if (options->profileFrame)
+        runtimeProfilerPhaseEnd(RUNTIME_PROFILE_TITLE, phase);
+
+    if (options->afterPresent)
+        options->afterPresent(options->userdata);
+
+    return 1;
 }
 
 void sdlQuit()

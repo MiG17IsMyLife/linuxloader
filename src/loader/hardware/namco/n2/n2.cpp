@@ -26,8 +26,6 @@
 #include "../../../redirections/filesystemShared.h"
 #include "../../../elfLoader/symbolResolver.hpp"
 #include "../../../elfLoader/glHooks.hpp"
-#include "../../../graphics/fpsLimiter.h"
-#include "../../../graphics/runtimeProfiler.h"
 #include "../../../graphics/sdlCalls.h"
 #include "../../../input/sdlInput.h"
 #include "../../../log/log.h"
@@ -525,29 +523,9 @@ int admGetDeviceAttribi(int, int attribute, int *value)
 
 int admSwapBuffers(AdmWindow *)
 {
-    runtimeProfilerFrameBoundary();
-
-    uint64_t phase = runtimeProfilerPhaseBegin();
-    pollEvents();
-    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_INPUT, phase);
-
-    SDL_Window *window = getSDLWindow();
-    if (!window)
-        return 0;
-
-    phase = runtimeProfilerPhaseBegin();
-    SDL_GL_SwapWindow(window);
-    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_SWAP, phase);
-
-    phase = runtimeProfilerPhaseBegin();
-    if (getConfig()->fpsLimiter)
-        frameTiming();
-    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_LIMITER, phase);
-
-    phase = runtimeProfilerPhaseBegin();
-    showFpsInWindowTitle(n2GetGameTitle());
-    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_TITLE, phase);
-    return 1;
+    const SDLFramePresentOptions present = {
+        n2GetGameTitle(), true, true, nullptr, nullptr, nullptr, nullptr};
+    return presentSDLFrame(&present);
 }
 
 //Counter-Strike Neo asks for the swap interval on every present
@@ -573,7 +551,7 @@ int admSwapInterval(int interval)
 
     haveApplied = true;
     applied = interval;
-    return SDL_GL_SetSwapInterval(interval) ? 1 : 0;
+    return setSDLSwapInterval(interval) ? 1 : 0;
 }
 
 using CreateTextureHandle = int (*)(void *, int, int);
@@ -764,7 +742,7 @@ bool dispatchOnLoaderMainThread(SDL_MainThreadCallback callback, void *arguments
      * pollEvents() in admSwapBuffers() services SDL's main-thread callback
      * queue once per rendered frame.
      */
-    return SDL_RunOnMainThread(callback, arguments, false);
+    return runOnSDLMainThread(callback, arguments, false);
 }
 
 struct TextureHandleCall

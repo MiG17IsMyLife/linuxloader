@@ -13,7 +13,6 @@
 #include "border.h"
 #include "crossHair.h"
 #include "blitStretching.h"
-#include "fpsLimiter.h"
 #include "loader/hardware/lindbergh/touchScreen.h"
 #include "sdlCalls.h"
 #include "../log/log.h"
@@ -143,7 +142,7 @@ bool bridgeGlxMakeContextCurrent(Display *dpy, GLXDrawable drawable, GLXDrawable
 
     if (drawable == 0)
     { // Unbind context
-        if (makeSDLCurrent(NULL, NULL) < 0)
+        if (!makeSDLCurrent(NULL, NULL))
         {
             log_error("glXMakeContextCurrent failed to unbind context: %s\n", SDL_GetError());
             return 0;
@@ -165,7 +164,7 @@ bool bridgeGlxMakeContextCurrent(Display *dpy, GLXDrawable drawable, GLXDrawable
         return 0;
     }
 
-    if (!SDL_GL_MakeCurrent(target_window, (SDL_GLContext)ctx))
+    if (!makeSDLCurrent(target_window, (SDL_GLContext)ctx))
     {
         log_error("glXMakeCurrent failed for window %p context %p: %s\n", (void *)target_window, (void *)ctx, SDL_GetError());
         return 0;
@@ -181,7 +180,7 @@ bool bridgeGlxMakeCurrent(Display *dpy, GLXDrawable drawable, GLXContext ctx)
 
 int bridgeGlxSwapInterval(int interval)
 {
-    return SDL_GL_SetSwapInterval(interval) ? 0 : 1;
+    return setSDLSwapInterval(interval) ? 0 : 1;
 }
 
 bool bridgeGlxQueryVersion(Display *dpy, int *major, int *minor)
@@ -444,12 +443,10 @@ const unsigned char *bridgegluErrorString(unsigned int error)
 
 #endif
 
-void bridgeGlxSwapBuffers(Display *dpy, GLXDrawable drawable)
+static void prepareGlxFrame(void *userdata)
 {
-    EmulatorConfig *config = getConfig();
+    EmulatorConfig *config = (EmulatorConfig *)userdata;
     uint64_t phase;
-
-    runtimeProfilerFrameBoundary();
 
     phase = runtimeProfilerPhaseBegin();
     if (config->borderEnabled)
@@ -464,30 +461,23 @@ void bridgeGlxSwapBuffers(Display *dpy, GLXDrawable drawable)
     phase = runtimeProfilerPhaseBegin();
     blitStretch();
     runtimeProfilerPhaseEnd(RUNTIME_PROFILE_BLIT, phase);
+}
 
-    phase = runtimeProfilerPhaseBegin();
-    pollEvents();
-    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_INPUT, phase);
-
-    phase = runtimeProfilerPhaseBegin();
-    SDL_GL_SwapWindow(getSDLWindow());
-    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_SWAP, phase);
-
-    phase = runtimeProfilerPhaseBegin();
-    if (config->fpsLimiter)
-        frameTiming();
-    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_LIMITER, phase);
-
-    phase = runtimeProfilerPhaseBegin();
-    static double localFps = 0.0;
-    static char windowTitle[256] = {0};
-    localFps = calculateFps();
-    sprintf(windowTitle, "%s - FPS: %.2f", getGameName(), localFps);
-    SDL_SetWindowTitle(getSDLWindow(), windowTitle);
-    runtimeProfilerPhaseEnd(RUNTIME_PROFILE_TITLE, phase);
-
+static void finishGlxFrame(void *userdata)
+{
+    (void)userdata;
     if (gId == QUIZ_AXA_SBMS || gId == QUIZ_AXA_SBUR_LIVE)
         mj4TouchHolding();
+}
+
+void bridgeGlxSwapBuffers(Display *dpy, GLXDrawable drawable)
+{
+    (void)dpy;
+    (void)drawable;
+    EmulatorConfig *config = getConfig();
+    const SDLFramePresentOptions present = {
+        getGameName(), true, true, prepareGlxFrame, NULL, finishGlxFrame, config};
+    presentSDLFrame(&present);
 }
 
 int bridgeGlxGetVideoSyncSGI(unsigned int *count)
