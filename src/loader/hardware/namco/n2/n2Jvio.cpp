@@ -14,7 +14,7 @@
 #include "n2.h"
 #include "../../../config/config.h"
 #include "../../../log/log.h"
-#include "../../lindbergh/jvs.h"
+#include "../../common/jvs.h"
 
 /*
  * The game writes a whole JVS request in one write() and then polls read()

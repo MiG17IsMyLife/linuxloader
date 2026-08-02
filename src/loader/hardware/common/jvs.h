@@ -235,6 +235,9 @@ extern JVSPacket inputPacket, outputPacket;
 /* The in and out buffer used to read and write to and from */
 extern unsigned char outputBuffer[JVS_MAX_PACKET_SIZE], inputBuffer[JVS_MAX_PACKET_SIZE];
 
+typedef void (*JVSGpoHandler)(unsigned char data);
+void setJVSGpoHandler(JVSGpoHandler handler);
+
 int getSenseLine();
 void setSenseLine(int senseLine);
 

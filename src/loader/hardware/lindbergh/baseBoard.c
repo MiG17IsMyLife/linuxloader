@@ -6,7 +6,7 @@
 #endif
 
 #include "../../config/config.h"
-#include "jvs.h"
+#include "../common/jvs.h"
 #include "passthrough.h"
 #include "../../log/log.h"
 #include <time.h>

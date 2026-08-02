@@ -1,10 +1,12 @@
 #include "n2.h"
 #include "n2Audio.h"
-#include "n2CardReader.h"
+#include "n2CsNeo.h"
+#include "n2Hasp.h"
 #include "n2Host.h"
 #include "n2Hook.h"
 #include "n2Jvio.h"
 #include "n2SteeringIo.h"
+#include "../../common/cardControl.h"
 
 #if defined(_WIN32) || defined(__MINGW32__)
 
@@ -276,21 +278,21 @@ CardRequest originalRequestCheckDispenser = nullptr;
 
 int getStatusCardDevice(uint8_t *service)
 {
-    if (n2CardReaderIsConnected() && originalRequestGetStatus)
+    if (cardControlIsConnected() && originalRequestGetStatus)
         return originalRequestGetStatus(service);
     return completeCardDeviceRequest(service, gcpResultReaderDisconnected);
 }
 
 int initCardDevice(uint8_t *service, int flag)
 {
-    if (n2CardReaderIsConnected() && originalRequestInit)
+    if (cardControlIsConnected() && originalRequestInit)
         return originalRequestInit(service, flag);
     return completeCardDeviceRequest(service, gcpResultReaderDisconnected);
 }
 
 int checkDispenserCardDevice(uint8_t *service)
 {
-    if (n2CardReaderIsConnected() && originalRequestCheckDispenser)
+    if (cardControlIsConnected() && originalRequestCheckDispenser)
         return originalRequestCheckDispenser(service);
     return completeCardDeviceRequest(service, gcpResultReaderDisconnected);
 }
@@ -838,23 +840,21 @@ int setTextureRegion(void *self, int texture, int x, int y, int width, int heigh
 }
 } // namespace
 
-/*
- * Counter-Strike Neo ships a stripped launcher with nine exported symbols, so
- * there is nothing in it to recognise.  What is distinctive is the pairing: the
- * launcher sits next to the GoldSrc engine module that Namco built for the
- * board, and no other title on the loader's roster is laid out that way.
- */
-static bool looksLikeCounterStrikeNeo(const char *elfPath)
+extern "C" int n2PrepareLoad(const char *elfPath)
 {
-    if (!elfPath || !*elfPath)
-        return false;
+    return n2CsNeoPrepareLoad(elfPath);
+}
 
-    std::error_code failure;
-    const std::filesystem::path executable(elfPath);
-    if (executable.stem().string().rfind("hlds", 0) != 0)
-        return false;
-
-    return std::filesystem::exists(executable.parent_path() / "engine_amd.so", failure);
+extern "C" void n2RegisterHaspPreloadOverrides(void)
+{
+    SymbolResolver::GetInstance().RegisterVTable("hasp_login", reinterpret_cast<void *>(haspLogin));
+    SymbolResolver::GetInstance().RegisterVTable("hasp_logout", reinterpret_cast<void *>(returnHaspSuccess));
+    SymbolResolver::GetInstance().RegisterVTable("hasp_get_size", reinterpret_cast<void *>(haspGetSize));
+    SymbolResolver::GetInstance().RegisterVTable("hasp_read", reinterpret_cast<void *>(haspRead));
+    SymbolResolver::GetInstance().RegisterVTable("hasp_write", reinterpret_cast<void *>(haspWrite));
+    SymbolResolver::GetInstance().RegisterVTable("hasp_encrypt", reinterpret_cast<void *>(returnHaspSuccess));
+    SymbolResolver::GetInstance().RegisterVTable("hasp_decrypt", reinterpret_cast<void *>(returnHaspSuccess));
+    SymbolResolver::GetInstance().RegisterVTable("hasp_cleanup", reinterpret_cast<void *>(returnHaspSuccess));
 }
 
 extern "C" int n2DetectGame(const char *elfPath)
@@ -866,7 +866,7 @@ extern "C" int n2DetectGame(const char *elfPath)
     void *systemMarker = n2ResolveSymbol("_ZN10clSystemN212initSystemN2Ev");
     if (!romInfo || !systemMarker || !isPrintableString(romInfo->revisionName, sizeof(romInfo->revisionName)))
     {
-        if (!looksLikeCounterStrikeNeo(elfPath))
+        if (!n2CsNeoLooksLikeGame(elfPath))
             return 0;
 
         detectedGame = N2_GAME_CSNEO;
@@ -981,19 +981,8 @@ extern "C" int n2InstallHooks(void)
     if (!n2IsDetected())
         return 0;
 
-    if (!n2IsWanganTitle())
-    {
-        std::error_code failure;
-        std::filesystem::create_directories("freespace/contents2", failure);
-        if (failure)
-            log_warn("Namco N2: could not create freespace/contents2 (%s); the game will "
-                     "start with an empty configuration",
-                     failure.message().c_str());
-
-        n2InstallAdmHooks();
-        log_info("Namco N2 compatibility hooks installed");
-        return 0;
-    }
+    if (detectedGame == N2_GAME_CSNEO)
+        return n2CsNeoInstallHooks();
 
     n2HookSymbol("_ZN18clInputDeviceJamma8checkUseEv", reinterpret_cast<void *>(returnSuccess));
     n2HookSymbol("_ZN16clInputDevicePad12handleEventsEv", reinterpret_cast<void *>(returnSuccess));
@@ -1039,7 +1028,7 @@ extern "C" int n2InstallHooks(void)
      * after the actual attempt and continues retrying when YaCardEmu starts
      * later.
      */
-    (void)n2CardReaderIsConnected();
+    (void)cardControlGetConnectionState();
     log_info("Namco N2 card: connecting /dev/ttyM2 to external YaCardEmu at %s",
              getConfig()->namcoN2.card.pipeName);
 
@@ -1140,7 +1129,6 @@ extern "C" int n2HandleSystemCommand(const char *command)
 {
     if (!n2IsDetected() || !command)
         return -1;
-
 
     if (std::strncmp(command, "find ", 5) == 0 && std::strstr(command, ">/tmp/find.txt"))
     {
@@ -1346,6 +1334,13 @@ extern "C" int n2HandleSystemCommand(const char *command)
 
     log_info("Namco N2: prepared virtual work disk directories");
     return 0;
+}
+
+extern "C" int n2HandleHostKey(int key, uint32_t modifiers)
+{
+    if (detectedGame != N2_GAME_CSNEO)
+        return 0;
+    return n2CsNeoHandleHostKey(key, modifiers);
 }
 
 #endif

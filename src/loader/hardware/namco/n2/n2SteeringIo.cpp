@@ -4,9 +4,11 @@
 #if defined(_WIN32) || defined(__MINGW32__)
 
 #include <cstring>
+#include <algorithm>
 #include <mutex>
 
 #include "../../../config/config.h"
+#include "../../common/forceFeedback.h"
 #include "../../../log/log.h"
 
 namespace
@@ -31,6 +33,28 @@ SetTorque originalOffTorque = nullptr;
 N2SteeringOutputState outputState = {};
 N2SteeringOutputBackend outputBackend = {};
 std::mutex outputMutex;
+
+void applySdlSteering(const N2SteeringOutputState *state, void *)
+{
+    FfbSteeringState translated = {};
+    translated.enabled = state->torqueEnabled;
+    translated.center = std::clamp((int)state->center - 32768 + state->centerOffset,
+                                   -32768, 32767);
+    translated.springStrength = (float)state->spring / 255.0f;
+    translated.damperStrength = (float)state->viscosity / 255.0f;
+    translated.constantForce = state->reflection != 0
+                                   ? (float)state->reflection / 127.0f
+                                   : state->reflectionStrength;
+    translated.vibrationStrength = state->vibrationStrength;
+    translated.vibrationPeriodMs = state->vibrationPeriod;
+    translated.vibrationDurationMs = state->vibrationDuration;
+    sdlFfbApplySteering(&translated);
+}
+
+void shutdownSdlSteering(void *)
+{
+    sdlFfbStopSteering();
+}
 
 template <typename Update>
 void updateOutput(Update update)
@@ -143,6 +167,13 @@ extern "C" int n2SteeringIoInstallHooks(void)
                       reinterpret_cast<void **>(&originalOffTorque));
     log_info("Namco N2 steering: installed %d output hooks (FFB backend %s)",
              installed, getConfig()->namcoN2.forceFeedbackEnabled ? "enabled" : "disabled");
+
+    const N2SteeringOutputBackend sdlBackend = {
+        applySdlSteering,
+        shutdownSdlSteering,
+        nullptr
+    };
+    n2SteeringIoSetBackend(&sdlBackend);
     return installed > 0 ? 0 : 1;
 }
 

@@ -21,12 +21,15 @@ int n2IsWanganTitle(void);
 
 // The path is needed because not every N2 title can be recognised from its
 // symbols: CSNeo executable is a stripped launcher.
+int n2PrepareLoad(const char *elfPath);
 int n2DetectGame(const char *elfPath);
 int n2IsDetected(void);
 int n2InstallHooks(void);
 int n2InstallAdmHooks(void);
 int n2InitializeGraphics(void);
 int n2HandleSystemCommand(const char *command);
+// Handles N2-specific host hotkeys before SDL 1.2 passes them to the game.
+int n2HandleHostKey(int key, uint32_t modifiers);
 /*
  * Runs the sequential shifter from the GearUp/GearDown bindings and reports
  * the selected gear, or 0 when the raw shifter switches are in use.

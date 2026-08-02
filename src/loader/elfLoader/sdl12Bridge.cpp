@@ -4,6 +4,7 @@
 #include "symbolResolver.hpp"
 #include "../config/config.h"
 #include "../graphics/sdlCalls.h"
+#include "../hardware/namco/n2/n2.h"
 #include "../log/log.h"
 
 #include <SDL3/SDL.h>
@@ -569,6 +570,9 @@ extern "C"
             switch (hostEvent.type)
             {
                 case SDL_EVENT_KEY_DOWN:
+                    if (!hostEvent.key.repeat)
+                        n2HandleHostKey(static_cast<int>(hostEvent.key.key),
+                                       static_cast<uint32_t>(hostEvent.key.mod));
                     queueKey(hostEvent.key, true);
                     break;
 

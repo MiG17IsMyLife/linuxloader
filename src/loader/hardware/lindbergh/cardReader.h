@@ -33,6 +33,7 @@ int initCardReader();
 size_t cardReaderWrite(int fd, const void *buf, size_t count);
 size_t cardReaderRead(int fd, void *buf, size_t count);
 void cardReaderSetFd(int serial, int fd, char *fName);
+void cardReaderRegisterCardControl(void);
 void idPatchEject();
 void idWriteFileHeaderTram(void *param1);
 bool idCardFileExists(const char *folderPath, long expectedSize, bool twoDigits);

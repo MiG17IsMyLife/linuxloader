@@ -8,7 +8,6 @@
 #include "networkBridge.hpp"
 #include "symbolResolver.hpp"
 #include "../hardware/namco/n2/n2.h"
-#include "../hardware/namco/n2/n2CardReader.h"
 #include "../config/config.h"
 #include "../graphics/sdlCalls.h"
 #include <csignal>

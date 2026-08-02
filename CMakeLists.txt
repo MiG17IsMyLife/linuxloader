@@ -59,7 +59,8 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux" AND NOT MINGW AND NOT CMAKE_C_COMPILER MATC
         src/loader/input/controlIniGen.c
         src/loader/log/log.c
         src/loader/hardware/lindbergh/output.c
-        src/loader/hardware/lindbergh/jvs.c
+        src/loader/hardware/common/jvs.c
+        src/loader/hardware/common/cardControl.c
         src/loader/config/config.c
         src/loader/input/evdevInput.c
         src/loader/config/gameData.c
@@ -101,6 +102,7 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux" AND NOT MINGW AND NOT CMAKE_C_COMPILER MATC
         src/loader/mainShared.c
         src/loader/config/*.c
         src/loader/graphics/*.c
+        src/loader/hardware/common/*.c
         src/loader/hardware/lindbergh/*.c
         src/loader/input/*.c
         src/loader/log/*.c
@@ -131,6 +133,7 @@ elseif(WIN32 OR MINGW OR CMAKE_C_COMPILER MATCHES "mingw")
         src/loader/audio/lindbergh/alsa2sdl/alsa2sdl.c
         src/loader/config/*.c
         src/loader/graphics/*.c
+        src/loader/hardware/common/*.c
         src/loader/hardware/lindbergh/*.c
         src/loader/hardware/namco/n2/*.cpp
         src/loader/input/*.c

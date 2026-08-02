@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include "cardReader.h"
+#include "../common/cardControl.h"
 #include "../../config/config.h"
 #include "../../patching/flowControl.h"
 #include "../../log/log.h"
@@ -15,6 +16,58 @@
 extern uint32_t gId;
 extern int gGrp;
 bool cardReaderInitialized = false;
+
+static CardControlActionResult lindberghSetInsertState(int active)
+{
+    (void)active;
+    if (gGrp == GROUP_ID4_EXP || gGrp == GROUP_ID4_JAP || gGrp == GROUP_ID5)
+        return CARD_CONTROL_HANDLED;
+    return CARD_CONTROL_NOT_HANDLED;
+}
+
+static CardControlActionResult lindberghRequestEject(void)
+{
+    return CARD_CONTROL_NOT_HANDLED;
+}
+
+static CardControlConnectionState lindberghCardConnectionState(void)
+{
+    if (cardReaderInitialized || gGrp == GROUP_ID4_EXP ||
+        gGrp == GROUP_ID4_JAP || gGrp == GROUP_ID5)
+        return CARD_CONTROL_CONNECTED;
+    return getConfig()->emulateHW210CardReader
+               ? CARD_CONTROL_DISCONNECTED
+               : CARD_CONTROL_UNAVAILABLE;
+}
+
+static const char *lindberghCardConnectionText(void)
+{
+    if (gGrp == GROUP_ID4_EXP || gGrp == GROUP_ID4_JAP || gGrp == GROUP_ID5)
+        return "Game-managed";
+    if (cardReaderInitialized)
+        return "File reader";
+    return getConfig()->emulateHW210CardReader ? "Disconnected" : "Unavailable";
+}
+
+static void lindberghCardDiagnostics(void)
+{
+    log_info("Lindbergh card status: reader=%s emulation=%s",
+             lindberghCardConnectionText(),
+             getConfig()->emulateHW210CardReader ? "enabled" : "disabled");
+}
+
+void cardReaderRegisterCardControl(void)
+{
+    const CardControlBackend backend = {
+        "Lindbergh card reader",
+        lindberghSetInsertState,
+        lindberghRequestEject,
+        lindberghCardConnectionState,
+        lindberghCardConnectionText,
+        lindberghCardDiagnostics
+    };
+    cardControlSetBackend(&backend);
+}
 
 void (*idWriteFileHeader)(void *) = NULL;
 

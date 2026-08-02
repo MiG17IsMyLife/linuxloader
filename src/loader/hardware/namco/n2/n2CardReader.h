@@ -11,6 +11,8 @@ int n2CardReaderIsConnected(void);
 const char *n2CardReaderConnectionText(void);
 void n2CardReaderRequestInsert(void);
 void n2CardReaderRequestEject(void);
+void n2CardReaderRegisterCardControl(void);
+void n2CardReaderLogDiagnostics(void);
 int n2CardReaderIsDescriptor(int fd);
 
 /*

@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-#include "jvs.h"
+#include "../common/jvs.h"
 
 int initSecurityBoard();
 int securityBoardOut(uint16_t port, uint32_t *data);

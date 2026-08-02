@@ -18,6 +18,7 @@
 
 #include "../mainShared.h"
 #include "../hardware/lindbergh/cardReader.h"
+#include "../hardware/common/cardControl.h"
 #include "../config/config.h"
 #include "../hardware/lindbergh/securityBoard.h"
 #include "../graphics/shaderCache.h"
@@ -194,13 +195,12 @@ int or2snprintf(char *s, size_t n, const char *format, ...)
     return ret;
 }
 
-extern bool gTriggerInsertKey;
 int idCardSize = 0;
 bool idTwoDigitsCardCount = false;
 
 bool checkTrgOn(int param_1, long param_2)
 {
-    if (param_2 == 0x1000 && (gTriggerInsertKey || getConfig()->idCardFileAutoload))
+    if (param_2 == 0x1000 && (cardControlIsInsertActive() || getConfig()->idCardFileAutoload))
     {
         if (idCardFileExists(getConfig()->idCardFolder, idCardSize, idTwoDigitsCardCount))
             return true;

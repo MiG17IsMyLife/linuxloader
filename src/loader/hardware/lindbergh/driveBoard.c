@@ -5,8 +5,8 @@
 #include "../../config/config.h"
 #include "../../redirections/filesystemShared.h"
 #include "driveBoard.h"
-#include "forceFeedback.h"
-#include "jvs.h"
+#include "../common/forceFeedback.h"
+#include "../common/jvs.h"
 
 #define DRIVEBOARD_READY 0x00
 #define DRIVEBOARD_NOT_INIT 0x11

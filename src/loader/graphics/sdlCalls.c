@@ -25,9 +25,9 @@
 #include "runtimeProfiler.h"
 #include "customCursor.h"
 #include "../input/sdlInput.h"
-#include "../hardware/lindbergh/jvs.h"
+#include "../hardware/common/jvs.h"
 #if defined(_WIN32) || defined(__MINGW32__)
-#include "../hardware/namco/n2/n2CardReader.h"
+#include "../hardware/common/cardControl.h"
 #endif
 #include "../resources/LiberationMono-Regular.h"
 #include "../resources/icon.h"
@@ -548,7 +548,7 @@ void showFpsInWindowTitle(const char *name)
 #if defined(_WIN32) || defined(__MINGW32__)
         snprintf(windowTitle, sizeof(windowTitle), "%s - FPS: %.2f - Card: %s",
                  name && *name ? name : "linuxloader", fps,
-                 n2CardReaderConnectionText());
+                 cardControlGetConnectionText());
 #else
         snprintf(windowTitle, sizeof(windowTitle), "%s - FPS: %.2f",
                  name && *name ? name : "linuxloader", fps);

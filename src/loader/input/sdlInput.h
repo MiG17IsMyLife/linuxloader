@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 #include "../config/iniParser.h"
-#include "../hardware/lindbergh/jvs.h"
+#include "../hardware/common/jvs.h"
 
 
 // --- CORE DATA STRUCTURES ---

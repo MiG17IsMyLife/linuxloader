@@ -4,10 +4,9 @@
 #include "libcBridge.hpp"
 #include "networkBridge.hpp"
 #include "symbolResolver.hpp"
+#include "virtualDeviceRegistry.hpp"
 #include "../graphics/sdlCalls.h"
-#include "../hardware/namco/n2/n2CardReader.h"
-#include "../hardware/namco/n2/n2Jvio.h"
-#include "../hardware/namco/n2/n2Kickback.h"
+#include "../hardware/namco/n2/n2VirtualDevices.h"
 #include "../log/log.h"
 #include <string>
 #include <windows.h>
@@ -29,22 +28,9 @@ namespace FileSystemBridge
     {
         if (getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2)
         {
-            // /dev/ttyM2 is owned by the card reader bridge; a failure here
-            // means YaCardEmu is not reachable, not that the host should be
-            // asked for a file by that name.
-            int descriptor = n2CardReaderOpen(path, flags);
-            if (descriptor >= 0 || (path && strcmp(path, "/dev/ttyM2") == 0))
-                return descriptor;
-
-            // /dev/ttyM3 is the JVIO line, claimed for the Wangan titles only.
-            descriptor = n2JvioSerialOpen(path, flags);
-            if (descriptor >= 0)
-                return descriptor;
-
-            // /dev/ttyM1 is the steering board, on its own line rather than JVS.
-            descriptor = n2KickbackSerialOpen(path, flags);
-            if (descriptor >= 0)
-                return descriptor;
+            const auto result = VirtualDeviceRegistry::open(path, flags);
+            if (result.claimed)
+                return result.descriptor;
         }
 
         int mode = 0;
@@ -73,12 +59,8 @@ namespace FileSystemBridge
     static ssize_t bridgeReadDescriptor(int fd, void *buffer, size_t count)
     {
         keepWindowResponsive();
-        if (n2CardReaderIsDescriptor(fd))
-            return n2CardReaderRead(fd, buffer, count);
-        if (n2JvioSerialIsDescriptor(fd))
-            return n2JvioSerialRead(fd, buffer, count);
-        if (n2KickbackSerialIsDescriptor(fd))
-            return n2KickbackSerialRead(fd, buffer, count);
+        if (const auto *device = VirtualDeviceRegistry::find(fd))
+            return device->read(fd, buffer, count);
         if (NetworkBridge::isSocketDescriptor(fd))
             return NetworkBridge::bridgeSocketRead(fd, buffer, count);
         return sharedRead(fd, buffer, count);
@@ -86,12 +68,8 @@ namespace FileSystemBridge
 
     static ssize_t bridgeWriteDescriptor(int fd, const void *buffer, size_t count)
     {
-        if (n2CardReaderIsDescriptor(fd))
-            return n2CardReaderWrite(fd, buffer, count);
-        if (n2JvioSerialIsDescriptor(fd))
-            return n2JvioSerialWrite(fd, buffer, count);
-        if (n2KickbackSerialIsDescriptor(fd))
-            return n2KickbackSerialWrite(fd, buffer, count);
+        if (const auto *device = VirtualDeviceRegistry::find(fd))
+            return device->write(fd, buffer, count);
         if (NetworkBridge::isSocketDescriptor(fd))
             return NetworkBridge::bridgeSocketWrite(fd, buffer, count);
         return sharedWrite(fd, buffer, count);
@@ -99,12 +77,8 @@ namespace FileSystemBridge
 
     static int bridgeCloseDescriptor(int fd)
     {
-        if (n2CardReaderIsDescriptor(fd))
-            return n2CardReaderClose(fd);
-        if (n2JvioSerialIsDescriptor(fd))
-            return n2JvioSerialClose(fd);
-        if (n2KickbackSerialIsDescriptor(fd))
-            return n2KickbackSerialClose(fd);
+        if (const auto *device = VirtualDeviceRegistry::find(fd))
+            return device->close(fd);
         if (NetworkBridge::isSocketDescriptor(fd))
             return NetworkBridge::bridgeSocketClose(fd);
         return sharedClose(fd);
@@ -117,12 +91,8 @@ namespace FileSystemBridge
         void *argument = va_arg(arguments, void *);
         va_end(arguments);
 
-        if (n2CardReaderIsDescriptor(fd))
-            return n2CardReaderIoctl(fd, request, argument);
-        if (n2JvioSerialIsDescriptor(fd))
-            return n2JvioSerialIoctl(fd, request, argument);
-        if (n2KickbackSerialIsDescriptor(fd))
-            return n2KickbackSerialIoctl(fd, request, argument);
+        if (const auto *device = VirtualDeviceRegistry::find(fd))
+            return device->ioctl(fd, request, argument);
         if (NetworkBridge::isSocketDescriptor(fd))
             return NetworkBridge::bridgeSocketIoctl(fd, request, argument);
         return sharedIoctl(fd, request, argument);
@@ -131,6 +101,14 @@ namespace FileSystemBridge
     void initBridges()
     {
         log_info("Initializing FileSystemBridge...");
+
+        /*
+         * Bridge symbols are installed before initConfig() identifies the
+         * loaded ELF. Register the N2 providers now and let each claimsPath()
+         * predicate consult the live platform when the guest opens a device.
+         */
+        VirtualDeviceRegistry::clear();
+        n2RegisterVirtualDevices();
 
         // Standard I/O functions
         MAP("fopen", sharedFopen);

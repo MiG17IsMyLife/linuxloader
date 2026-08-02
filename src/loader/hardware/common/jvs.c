@@ -3,10 +3,15 @@
 
 #include "jvs.h"
 #include "../../config/config.h"
-#include "output.h"
 
 /* The in and out packets used to read and write to and from*/
 JVSPacket inputPacket, outputPacket;
+static JVSGpoHandler gpoHandler = NULL;
+
+void setJVSGpoHandler(JVSGpoHandler handler)
+{
+    gpoHandler = handler;
+}
 
 /* The in and out buffer used to read and write to and from */
 unsigned char outputBuffer[JVS_MAX_PACKET_SIZE], inputBuffer[JVS_MAX_PACKET_SIZE];
@@ -461,7 +466,8 @@ JVSStatus processPacket(int *packetSize)
             for (int i = 0; i < inputPacket.data[index + 1]; i++)
             {
                 // setGeneralPurposeOutputByte(i, inputPacket.data[index + 2 + i]);
-                processGPOpacket(inputPacket.data[index + 2 + i]);
+                if (gpoHandler)
+                    gpoHandler(inputPacket.data[index + 2 + i]);
             }
             outputPacket.data[outputPacket.length] = REPORT_SUCCESS;
             outputPacket.length += 1;

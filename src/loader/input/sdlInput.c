@@ -17,15 +17,13 @@
 #include "../graphics/blitStretching.h"
 #include "../config/config.h"
 #include "../graphics/crossHair.h"
-#include "../hardware/lindbergh/forceFeedback.h"
+#include "../hardware/common/forceFeedback.h"
+#include "../hardware/common/cardControl.h"
 #include "../config/iniParser.h"
 #include "sdlInput.h"
-#include "../hardware/lindbergh/jvs.h"
+#include "../hardware/common/jvs.h"
 #include "../log/log.h"
 #include "../hardware/lindbergh/touchScreen.h"
-#if defined(_WIN32) || defined(__MINGW32__)
-#include "../hardware/namco/n2/n2CardReader.h"
-#endif
 #include "../graphics/sdlCalls.h"
 #include "../mainShared.h"
 #include "wiimoteEvdev.h"
@@ -68,7 +66,6 @@ BindingPair gJoyButtonBindings[MAX_JOYSTICKS][MAX_JOY_BUTTONS];
 BindingPair gControllerAxisBindings[MAX_JOYSTICKS][SDL_GAMEPAD_AXIS_COUNT];
 BindingPair gControllerButtonBindings[MAX_JOYSTICKS][SDL_GAMEPAD_BUTTON_COUNT];
 HatBinding gJoyHatBindings[MAX_JOYSTICKS][MAX_JOY_HATS];
-bool gTriggerInsertKey = false;
 
 extern uint32_t gId;
 extern int gGrp;
@@ -91,7 +88,6 @@ extern int drawableW;
 extern int drawableH;
 extern bool mj4TouchedInsideScreen;
 
-extern bool gTriggerInsertKey;
 
 int jvsAnalogueMaxValue;
 int jvsAnalogueCenterValue;
@@ -2158,39 +2154,32 @@ void processChangedActions()
             continue;
         }
 
-#if defined(_WIN32) || defined(__MINGW32__)
-        if (gGrp == GROUP_WMMT3 && gActionStates[player][actionId].isActive)
+        if (actionId == LA_CardInsert)
         {
-            int handled = 1;
-            switch (actionId)
+            const CardControlActionResult result =
+                cardControlSetInsertState(gActionStates[player][actionId].isActive);
+            if (result != CARD_CONTROL_NOT_HANDLED)
             {
-                case LA_CardInsert: n2CardReaderRequestInsert(); break;
-                case LA_CardEject: n2CardReaderRequestEject(); break;
-                default: handled = 0; break;
+                if (result == CARD_CONTROL_HANDLED_ONE_SHOT)
+                    gActionStates[player][actionId].isActive = false;
+                continue;
             }
-            if (handled)
+        }
+        else if (actionId == LA_CardEject && gActionStates[player][actionId].isActive)
+        {
+            const CardControlActionResult result = cardControlRequestEject();
+            if (result != CARD_CONTROL_NOT_HANDLED)
             {
-                // Treat every card control as a one-shot command even if an
-                // older controls.ini still has CardInsert_Toggle enabled.
                 gActionStates[player][actionId].isActive = false;
                 continue;
             }
         }
-#endif
 
         JVSActionMapping *map = &gJvsMap[player][actionId];
         ActionState *state = &gActionStates[player][actionId];
         switch (map->call_type)
         {
             case JVS_CALL_SWITCH:
-                if ((gGrp == GROUP_ID4_EXP || gGrp == GROUP_ID4_JAP || gGrp == GROUP_ID5) && actionId == LA_CardInsert)
-                {
-                    if (state->isActive)
-                        gTriggerInsertKey = true;
-                    else
-                        gTriggerInsertKey = false;
-                    break;
-                }
                 setSwitch(player, map->jvsInput, state->isActive);
                 break;
             case JVS_CALL_ANALOGUE:

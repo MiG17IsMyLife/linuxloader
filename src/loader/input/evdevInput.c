@@ -19,7 +19,7 @@
 #include "../config/config.h"
 #include "../graphics/crossHair.h"
 #include "../graphics/blitStretching.h"
-#include "../hardware/lindbergh/jvs.h"
+#include "../hardware/common/jvs.h"
 #include "../log/log.h"
 #include "../graphics/sdlCalls.h"
 

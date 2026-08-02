@@ -153,6 +153,10 @@ int main(int argc, char *argv[], char *envp[])
     log_info("Initializing bridges...\n");
     initBridges();
 
+    // CS Neo's engine is mapped as a launcher dependency. Its path-based N2
+    // overrides must therefore be registered before the ELF relocation pass.
+    n2PrepareLoad(elfPath);
+
     if (!std::filesystem::exists("tmp"))
         std::filesystem::create_directory("tmp");
     if (!std::filesystem::exists("tmp\\segaboot"))
@@ -204,19 +208,7 @@ int main(int argc, char *argv[], char *envp[])
             token = strtok(NULL, " ");
         }
     }
-    /*
-     * WMMT3 derives its development flag straight from the argument count:
-     *
-     *     main():  gDebug = (argc == 1);  seqMain(gDebug)
-     *
-     * A cabinet starts the game from .execrc as "./main 1", so argc is 2 and
-     * the flag stays clear.  Launching the ELF bare puts it in development
-     * mode, which swaps the test menu for the one carrying デバッグ and
-     * テストプレイ and makes main() shell out to "perl prepend-n2.pl".
-     * Reproduce the cabinet's command line unless the user asked for the
-     * development mode through [NamcoN2] DEBUG_MODE, or passed their own
-     * arguments.
-     */
+
     if (getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2 && final_argc == 1)
     {
         if (getConfig()->namcoN2.debugMode)

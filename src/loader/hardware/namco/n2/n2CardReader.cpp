@@ -21,6 +21,7 @@
 #include <windows.h>
 
 #include "../../../config/config.h"
+#include "../../common/cardControl.h"
 #include "../../../log/log.h"
 
 /*
@@ -670,6 +671,61 @@ extern "C" void n2CardReaderRequestEject(void)
 {
     ensureWorkerStarted();
     queueControlRequest(ControlRequest::Eject);
+}
+
+namespace
+{
+CardControlActionResult n2SetCardInsertState(int active)
+{
+    if (!active)
+        return CARD_CONTROL_HANDLED;
+    n2CardReaderRequestInsert();
+    return CARD_CONTROL_HANDLED_ONE_SHOT;
+}
+
+CardControlActionResult n2RequestCardEject(void)
+{
+    n2CardReaderRequestEject();
+    return CARD_CONTROL_HANDLED_ONE_SHOT;
+}
+
+CardControlConnectionState n2CardConnectionState(void)
+{
+    return n2CardReaderIsConnected()
+               ? CARD_CONTROL_CONNECTED
+               : CARD_CONTROL_DISCONNECTED;
+}
+}
+
+extern "C" void n2CardReaderRegisterCardControl(void)
+{
+    const CardControlBackend backend = {
+        "Namco N2 external YaCardEmu",
+        n2SetCardInsertState,
+        n2RequestCardEject,
+        n2CardConnectionState,
+        n2CardReaderConnectionText,
+        n2CardReaderLogDiagnostics
+    };
+    cardControlSetBackend(&backend);
+}
+
+extern "C" void n2CardReaderLogDiagnostics(void)
+{
+    ensureWorkerStarted();
+    size_t receiveBytes;
+    size_t transmitBytes;
+    {
+        std::lock_guard<std::mutex> lock(bufferMutex);
+        receiveBytes = receiveQueue.size();
+        transmitBytes = transmitQueue.size();
+    }
+    log_info("Namco N2 card diagnostics: pipe=%s api=%s inserted=%s rx=%zu tx=%zu",
+             linkState.load(std::memory_order_acquire) == LinkState::Connected
+                 ? "connected" : "disconnected",
+             apiConnected.load(std::memory_order_acquire) ? "connected" : "disconnected",
+             cardInserted.load(std::memory_order_acquire) ? "yes" : "no",
+             receiveBytes, transmitBytes);
 }
 
 extern "C" int n2CardReaderIsDescriptor(int fd)

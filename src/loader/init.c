@@ -4,10 +4,12 @@
 #include "hardware/lindbergh/baseBoard.h"
 #include "hardware/lindbergh/driveBoard.h"
 #include "hardware/lindbergh/eeprom.h"
-#include "hardware/lindbergh/forceFeedback.h"
+#include "hardware/lindbergh/output.h"
+#include "hardware/common/forceFeedback.h"
+#include "hardware/common/cardControl.h"
 #include "graphics/fpsLimiter.h"
 #include "graphics/gpuVendor.h"
-#include "hardware/lindbergh/jvs.h"
+#include "hardware/common/jvs.h"
 #include "patching/patch.h"
 #include "patching/patchResolution.h"
 #include "hardware/lindbergh/rideBoard.h"
@@ -20,6 +22,7 @@
 
 #if defined(_WIN32) || defined(__MINGW32__)
 #include "hardware/namco/n2/n2.h"
+#include "hardware/namco/n2/n2CardReader.h"
 #endif
 
 #if defined(__linux__)
@@ -97,6 +100,15 @@ void initMain(char *configPath, char *controlsPath)
     gWidth = getConfig()->width;
     gHeight = getConfig()->height;
 
+    if (getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2)
+    {
+#if defined(_WIN32) || defined(__MINGW32__)
+        n2CardReaderRegisterCardControl();
+#endif
+    }
+    else
+        cardReaderRegisterCardControl();
+
 #if defined(_WIN32) || defined(__MINGW32__)
     applyConsoleCodePage();
 #endif
@@ -158,6 +170,8 @@ void initMain(char *configPath, char *controlsPath)
 
     if (initJVS() != 0)
         exit(1);
+    if (getConfig()->platform == ARCADE_PLATFORM_LINDBERGH)
+        setJVSGpoHandler(processGPOpacket);
     log_info("JVS initialized");
 
     if (getConfig()->platform == ARCADE_PLATFORM_LINDBERGH)
