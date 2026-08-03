@@ -595,16 +595,14 @@ void remapPerGame()
     if (gGrp == GROUP_WMMT3)
     {
         /*
-         * These are the switch positions the cabinet's JVIO board actually
-         * reports, so the JVS state is already wire-correct and no separate
-         * translation is needed on the way to the game.  The four shifter
-         * switches sit in the second switch byte rather than on the direction
-         * bits, and VIEW and BGM are the last two buttons of that byte.
+         * The switch positions the cabinet's JVIO board reports, so the JVS
+         * state is already wire-correct. The four shifter switches sit in the
+         * second switch byte rather than on the direction bits, with VIEW and
+         * BGM as its last two buttons.
          *
-         * GearUp/GearDown intentionally remain on PLAYER_2 so existing
-         * Lindbergh controls.ini files and generated defaults keep working;
-         * they drive the sequential shifter, which is synthesised onto the
-         * same four switches.
+         * GearUp/GearDown stay on PLAYER_2 so existing Lindbergh controls.ini
+         * files keep working; they drive the sequential shifter, which is
+         * synthesised onto those same four switches.
          */
         gJvsMap[PLAYER_1][LA_Up] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_3};
         gJvsMap[PLAYER_1][LA_Down] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_4};

@@ -37,20 +37,15 @@ int initJVS()
 {
     {
         /*
-         * clSystemN2::initSystemN2() claims seven functions in a row through
-         * n2JvioSetFuncIo(), and each request is clamped to what the board
-         * reported or refused outright if the board reported none:
+         * clSystemN2::initSystemN2() claims seven functions and clamps each to
+         * what the board reported:
          *
          *   'P' players 2   'B' switches 24   'C' coin slots 2
          *   'A' analogue in 8   'G' GPO 6   'O' analogue out 4   'W' GPI 16
          *
-         * n2JvioCheckRevisionError() additionally wants the command and JVS
-         * version bytes to read exactly 0x10, so this board is a Ver1.0 one
-         * rather than the Ver3.0 the Sega boards report.
-         *
-         * With these values the cabinet reports "I/O Board 1: Link OK" and
-         * settles into its 50 Hz poll of switches, coins, analogue inputs and
-         * the two output banks.
+         * n2JvioCheckRevisionError() also wants the command and JVS version
+         * bytes at exactly 0x10, so this is a Ver1.0 board rather than the
+         * Ver3.0 the Sega ones report.
          */
         io.capabilities.switches = getConfig()->namcoN2.jvs.switches;
         io.capabilities.coins = getConfig()->namcoN2.jvs.coins;
@@ -301,13 +296,11 @@ JVSStatus processPacket(int *packetSize)
             outputPacket.length += 2;
 
             /*
-             * inputSwitch holds one player's switches as a 16 bit word laid
-             * out by the BUTTON_* masks: the first JVS byte is bits 15..8 and
-             * the second is bits 7..0.  A board that advertises more than 16
-             * switches - the Namco N2 one reports 24 - is polled for a third
-             * byte, and the old expression answered it with a negative shift.
-             * Nothing maps switches past the second byte, so the extra bytes
-             * are reported as released rather than as undefined behaviour.
+             * inputSwitch holds one player's switches as a 16 bit word laid out
+             * by the BUTTON_* masks: JVS byte one is bits 15..8, byte two is
+             * bits 7..0. A board advertising more than 16 switches - the Namco
+             * N2 one reports 24 - is polled for a third, and nothing maps that
+             * far, so the extra bytes read as released.
              */
             for (int i = 0; i < inputPacket.data[index + 1]; i++)
             {
@@ -521,12 +514,11 @@ JVSStatus processPacket(int *packetSize)
         break;
 
         /*
-         * Manufacturer specific commands carry a private payload whose length
-         * the spec does not define, so there is no way to step over one and
-         * carry on with the rest of the packet. Namco System N2 sends 0x70
-         * while setting its I/O board up and retries for as long as it is
-         * refused, so the command is acknowledged and the remaining bytes are
-         * left alone instead of being read back as a run of bogus commands.
+         * A manufacturer specific command carries a payload whose length the
+         * spec does not define, so there is no stepping over one to reach the
+         * rest of the packet. Namco N2 sends 0x70 while setting its I/O board
+         * up and retries until acknowledged, so acknowledge it and stop reading
+         * rather than parse the payload as commands.
          */
         case CMD_NAMCO_SPECIFIC:
         {

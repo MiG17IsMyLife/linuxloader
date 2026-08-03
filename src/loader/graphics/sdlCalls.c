@@ -77,18 +77,13 @@ int initSDL()
 }
 
 /*
- * Windows decides a window has hung as soon as the thread that owns it stops
- * taking messages for a few seconds, and puts a grey "Not Responding" ghost in
- * its place.  Loading a course is one long stretch of work on that thread with
- * no frame presented, so from the outside it looks hung even though it is
- * making progress the whole time.
+ * Windows calls a window hung once its owning thread stops taking messages for
+ * a few seconds, and replaces it with a grey ghost. Loading a course is exactly
+ * that: one long stretch of work with no frame presented.
  *
- * Two things are needed.  Ghosting is turned off so the window keeps showing
- * what it last drew instead of being replaced, and the message queue is drained
- * from the loader's file paths, which the game is going through constantly
- * while it loads.  Only the thread that owns the window may do the latter, and
- * only every so often, so a load that reads thousands of files does not pay for
- * a message pump each time.
+ * So ghosting is turned off, and the message queue is drained from the loader's
+ * file paths, which a load goes through constantly. Only the owning thread may
+ * pump, and only every so often, so thousands of reads do not each pay for one.
  */
 #define WINDOW_PUMP_INTERVAL_MS 100
 

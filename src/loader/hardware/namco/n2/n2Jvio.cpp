@@ -121,12 +121,11 @@ void answerRequest(const uint8_t *frame, size_t length)
     log_trace("Namco N2 JVS: request %s", hex);
 
     /*
-     * The manufacturer specific command, called out separately because it is
-     * the one whose payload is still undecoded: "E0 01 07 70 18 50 4C 14 FE",
-     * built by n2JvioTxPl and sent from clSystemN2::initSystemN2 through
-     * clKickback::sendJVS. jvs.c acknowledges it with a bare status and the
-     * game is satisfied - it repeats every ten seconds and never retries - so
-     * the payload only matters if something later turns out to need it.
+     * The manufacturer specific command, whose payload is still undecoded:
+     * "E0 01 07 70 18 50 4C 14 FE", built by n2JvioTxPl and sent from
+     * initSystemN2 through clKickback::sendJVS. jvs.c acknowledges it with a
+     * bare status and the game is satisfied - it repeats every ten seconds and
+     * never retries.
      */
     if (length > 3 && frame[3] == 0x70)
         log_debug("Namco N2 JVS: manufacturer command %s", hex);

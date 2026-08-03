@@ -360,19 +360,14 @@ float clamp01(float value)
 }
 
 /*
- * What the cabinet's potentiometers put on the wire.
+ * What the cabinet's potentiometers put on the wire. The pedals rest at a fixed
+ * count and swing across the window the game calibrates them in
+ * (clInputDeviceJamma::m_left_pedal_std and _w, and the right pedal pair).
  *
- * The pedals rest at a fixed count and swing across the window the game
- * calibrates them in - clInputDeviceJamma::m_left_pedal_std and _w, and the
- * right pedal pair - so a fully pressed pedal lands exactly on the far edge of
- * that window.
- *
- * The wheel has considerably more electrical travel than its window, which is
- * what the steering initialisation screen in the test menu exists to measure:
- * it reports the raw count divided by 64, and a real cabinet reads about +/-520
- * there rather than the +/-384 that m_w alone would give.  So the wheel is
- * handed the whole 16 bit range and the game's own calibration decides where
- * full lock sits.
+ * The wheel has more electrical travel than its window - a real cabinet reads
+ * about +/-520 on the test menu's steering screen against the +/-384 m_w alone
+ * would give - so it gets the whole 16 bit range and the game's own calibration
+ * decides where full lock sits.
  */
 uint16_t calibratedRaw(float normalized, int rawMin, int rawMax)
 {
@@ -403,12 +398,11 @@ bool switchActive(const JVSIO *io, JVSPlayer player, JVSInput input)
 /*
  * Advances the six position shifter from the sequential GearUp/GearDown
  * bindings and reports the selected gear, or 0 while the four raw shifter
- * switches are being thrown directly.  Both the direct-write path and the JVS
- * bridge drive the same state machine, so a cabinet cannot end up with one
- * gear on the wire and another in the game.
+ * switches are thrown directly. Both the direct-write path and the JVS bridge
+ * drive this same state machine, so the wire and the game cannot disagree.
  *
- * GearUp/GearDown live on PLAYER_2 because that is where initJvsMappings()
- * puts them for DRIVING titles.
+ * GearUp/GearDown live on PLAYER_2, where initJvsMappings() puts them for
+ * DRIVING titles.
  */
 extern "C" int n2UpdateShifter(void)
 {
@@ -1029,23 +1023,16 @@ extern "C" int n2InstallHooks(void)
     n2HookSymbol("_ZN16clInputDevicePad12handleEventsEv", reinterpret_cast<void *>(returnSuccess));
 
     /*
-     * The game runs its own JVS master: clSystemN2::initSystemN2() opens
-     * /dev/ttyM3, resets the bus, assigns an address, reads the function list,
-     * and n2JvioAckTxVsync() then decodes each frame's reply into n2jvio for
-     * clInputDeviceJamma::handleEvents(). The loader only has to answer as the
-     * I/O board, which n2Jvio.cpp does on top of the same JVS slave the
-     * Lindbergh games use.
+     * The game runs its own JVS master on /dev/ttyM3 - initSystemN2() resets
+     * the bus, assigns an address and reads the function list, and
+     * n2JvioAckTxVsync() decodes each reply. The loader only answers as the I/O
+     * board, which n2Jvio.cpp does on the JVS slave the Lindbergh games use.
      */
     log_info("Namco N2 JVS: answering the game's JVIO master on /dev/ttyM3");
 
-    /*
-     * The cabinet checks its steering board before entering attract mode.
-     * These used to be stubbed because the board was not emulated at all, but
-     * that also left clKickback unopened: it only puts a frame on the wire once
-     * its own initialisation has run, so stubbing the check kept /dev/ttyM1
-     * silent and the cabinet stuck on PCB ERROR. The real sequence runs now and
-     * n2Kickback.cpp answers it.
-     */
+    // The cabinet checks its steering board before attract mode. Stubbing that
+    // check left clKickback uninitialised, so it never opened /dev/ttyM1 and the
+    // cabinet stuck on PCB ERROR. The real sequence runs; n2Kickback.cpp answers.
     n2SteeringIoInstallHooks();
 
     // Silence is not fatal, missing openal32.dll must not abort startup.
@@ -1067,14 +1054,9 @@ extern "C" int n2InstallHooks(void)
                              reinterpret_cast<void *>(checkDispenserCardDevice),
                              reinterpret_cast<void **>(&originalRequestCheckDispenser));
 
-    /*
-     * Start the asynchronous bridge, but do not interpret its initial state as
-     * a failed connection. The worker has only just been created here and may
-     * not have reached CreateFile yet, even when YaCardEmu already owns the
-     * pipe. openCardPipe() logs the authoritative connected/unavailable result
-     * after the actual attempt and continues retrying when YaCardEmu starts
-     * later.
-     */
+    // Start the bridge, but do not read its initial state as a failed connect:
+    // the worker may not have reached CreateFile yet. openCardPipe() logs the
+    // authoritative result and keeps retrying if YaCardEmu starts later.
     (void)cardControlGetConnectionState();
     log_info("Namco N2 card: connecting /dev/ttyM2 to external YaCardEmu at %s",
              getConfig()->namcoN2.card.pipeName);

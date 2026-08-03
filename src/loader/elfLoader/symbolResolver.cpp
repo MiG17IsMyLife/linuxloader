@@ -400,14 +400,9 @@ void SymbolResolver::LoadNeededLibrary(const std::string &linuxName)
     {
         fullPath = followTextSymlink(fullPath);
 
-        /*
-         * Two names can lead to the same file - libstdc++.so.6 is a link to
-         * libstdc++.so.6.0.7, and every dependent asks for one or the other -
-         * so the resolved path is checked as well as the name that was asked
-         * for.  Mapping a library twice gives it two sets of globals, which a
-         * library holding state of its own does not survive: SDL was being
-         * loaded five times over.
-         */
+        // Two names can lead to one file - libstdc++.so.6 links to .6.0.7 - so
+        // the resolved path is checked as well as the name asked for. Mapping a
+        // library twice gives it two sets of globals; SDL was loaded five times.
         if (std::find(m_LoadedNativeNames.begin(), m_LoadedNativeNames.end(), fullPath) != m_LoadedNativeNames.end())
         {
             log_debug("Linux SO %s is %s, already natively loaded. Skipping.", targetName.c_str(), fullPath.c_str());

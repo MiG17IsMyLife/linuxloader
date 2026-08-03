@@ -103,12 +103,10 @@ struct Sdl12ResizeEvent
 };
 
 /*
- * Exactly as wide as SDL 1.2's SDL_Event, which is twenty bytes - the size of
- * its keyboard event, the largest member.  The guest declares one of these on
- * its stack and hands the bridge the address, so anything wider is written
- * straight past it: a union padded to 64 here smashed 44 bytes of the caller's
- * frame, and Counter-Strike Neo returned through the wreckage to address zero
- * the moment a key or a mouse movement reached it.
+ * Exactly as wide as SDL 1.2's SDL_Event: twenty bytes, the size of its
+ * keyboard event. The guest declares one on its stack and passes the address,
+ * so anything wider is written straight past it - padding this to 64 smashed 44
+ * bytes of the caller's frame.
  */
 union Sdl12Event
 {

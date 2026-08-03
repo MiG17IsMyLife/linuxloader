@@ -128,14 +128,12 @@ const size_t gDefaultDrivingBindingsSize = sizeof(gDefaultDrivingBindings) / siz
 /*
  * Wangan Midnight Maximum Tune 3 / 3DX / 3DX+ on Namco System N2.
  *
- * The cabinet is a driving one, but its panel does not match the Lindbergh
- * driving profile: there is no boost button, and the card is handled by the
- * reader on /dev/ttyM2 rather than a JVS switch, so Boost, BoostRight and
- * the reader on /dev/ttyM2 rather than a JVS switch, so the card actions below
- * are routed to the external YaCardEmu API. What it has on top of wheel and
- * pedals is a six-position shifter, reachable
- * either sequentially through GearUp/GearDown or directly through Gear1..6,
- * plus the VIEW and intrusion-selection cabinet buttons.
+ * A driving cabinet, but not the Lindbergh driving profile: there is no boost
+ * button, and the card is handled by the reader on /dev/ttyM2 rather than a JVS
+ * switch, so the card actions below go to the external YaCardEmu API. On top of
+ * wheel and pedals it has a six-position shifter - sequential through
+ * GearUp/GearDown or direct through Gear1..6 - plus the VIEW and
+ * intrusion-selection buttons.
  *
  * GearUp/GearDown stay on PLAYER_2 because fixPlayerForAction() forces them
  * there for every game. Direct gears and cabinet buttons belong to player 1.

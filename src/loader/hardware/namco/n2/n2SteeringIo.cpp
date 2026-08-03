@@ -58,28 +58,15 @@ void applySdlSteering(const N2SteeringOutputState *state, void *)
     const float scale = state->powerType != 0 ? state->powerScale : 0.0f;
     FfbSteeringState translated = {};
 
-    /*
-     * The board works in ten bits, not sixteen.
-     *
-     * clKickback::setCenter masks its argument with 0x3ff and
-     * clKickback::sm_default_center is 0x1ff, so a wheel position runs 0..1023
-     * about a centre of 511 - the same figure the ten byte torque field uses.
-     * Treating it as an unsigned sixteen bit value about 32768 put the spring's
-     * centre at the far left of the axis, where it can only pull.
-     */
+    // Ten bits, not sixteen: setCenter masks with 0x3ff and sm_default_center
+    // is 0x1ff, so a position runs 0..1023 about a centre of 511.
     const int centred = (int)state->center - kickbackCentre + state->centerOffset;
     translated.center = std::clamp(centred * kickbackCentreScale, -32768, 32767);
 
     /*
-     * Coefficients run to 127, which is where full deflection sits for both the
-     * cabinet's board and TeknoParrotUi's own wheel output.
-     *
-     * Reflection is different. Its byte is signed and nominally reaches 127, but
-     * a race was measured using about thirty five counts of it, so normalising
-     * against the full width leaves the wheel at a quarter of its strength.
-     * FFB_REFLECT_RANGE is what counts as full instead - the same trick, and the
-     * same reason, as the Range that TeknoParrotUi derives from its weight
-     * setting.
+     * Coefficients run to 127. Reflection is the exception: its byte is signed
+     * and nominally reaches 127, but a race only uses about thirty five counts
+     * of it, so FFB_REFLECT_RANGE is what counts as full deflection instead.
      */
     const EmulatorConfig *config = getConfig();
     const float gain = (float)config->namcoN2.ffbGain / 100.0f;
@@ -132,28 +119,15 @@ void shutdownSdlSteering(void *)
     sdlFfbStopSteering();
 }
 
-/*
- * Re-read the board while the game is quiet.
- *
- * Between races the game stops calling clKickback's setters entirely, so
- * nothing pushes an update - but offTrq has meanwhile zeroed the board's spring
- * and viscosity, and that release has to reach the wheel or it stays stiff all
- * the way through the attract screen. Runs on the force feedback worker, which
- * is off the game thread; it only reads the board's fields and takes the same
- * lock every other update does.
- */
+// Re-read the board while the game is quiet. Between races it stops calling the
+// setters entirely, so nothing else would deliver offTrq's release and the wheel
+// stays stiff through the attract screen. Runs on the force feedback worker.
 void pollBoard(void);
 
 /*
- * Read the board's own fields rather than trusting what came through the
- * setters.
- *
- * clKickback::onTrq and offTrq write spring and viscosity straight into the
- * object - 0x3f when torque starts, zero when it stops - without going near
- * setSpring or setViosity. Watching only the setters meant the release never
- * arrived, so the last values from a race stayed applied and the wheel was
- * still stiff back on the attract screen. The offsets come from the
- * disassembly of those two and of clKickback::init.
+ * Read the board's fields rather than trusting the setters: onTrq and offTrq
+ * write spring and viscosity straight into the object - 0x3f and 0 - without
+ * going near setSpring or setViosity.
  *
  * Caller holds outputMutex.
  */
@@ -206,17 +180,9 @@ void updateOutput(Update update)
 }
 
 /*
- * Lifecycle tracing.
- *
- * The nine setters above are the only things that stage a frame for
- * clKickback::send(), and a boot with force feedback switched on produced no
- * frames at all on /dev/ttyM1 even though clSerialN2::open() reported success.
- * That puts the stall somewhere in the board's own start-up sequence rather
- * than in the reply this loader gives, so trace that sequence before changing
- * any of it.  The offsets are read out of the disassembly of clKickback::init()
- * and clKickback::send(): 0x24 is set by every setter to mean "a frame is
- * staged", 0x33 means "not yet transmitted", and 0x6c..0x6e hold the three
- * character error code getPCBError() reports.
+ * Lifecycle tracing. The offsets come from clKickback::init() and send():
+ * 0x24 means a frame is staged, 0x33 means not yet transmitted, and 0x6c..0x6e
+ * hold the three character error code getPCBError() reports.
  */
 using KickbackCall = int (*)(void *);
 using KickbackInit = int (*)(void *, unsigned);
@@ -269,14 +235,9 @@ unsigned long receiveCalls = 0;
 unsigned long manageCalls = 0;
 unsigned long execCalls = 0;
 
-/*
- * clKickback::manage() and exec() are the two entry points that were never
- * hooked, and between them they hold six of the eight places that write the
- * "E20" the cabinet reports. Both run every frame, so they are summarised - but
- * the moment either latches the error, say so immediately: that is the exact
- * frame the cause has to be read from, and everything else here has only ever
- * shown the state before or after it.
- */
+// manage() and exec() hold most of the places that write "E20". Both run every
+// frame, so they are summarised - but an error is reported the moment it is
+// latched, which is the only frame its cause can be read from.
 KickbackCall originalManage = nullptr;
 KickbackCall originalExec = nullptr;
 char lastReportedError[4] = {};
@@ -357,12 +318,12 @@ int offPowerHook(void *object)
 }
 
 /*
- * Both of these spin inside the frame until the board has reported the motor in
- * the state they are waiting for, so the report has to be up before the loop
- * starts rather than in reaction to anything it does. waitOffPower was never
- * hooked at all, and it is the one that runs after a race: without an answer it
- * never returns, which is why the game kept rendering at sixty while its own
- * scene progression stopped at the game over screen.
+ * Both block inside the frame until this->0x2c reaches what they are waiting
+ * for - 0 for waitOnPower, which the ordinary acknowledgement gives it, and 1
+ * for waitOffPower, which only "C06" sets. So the report is queued before the
+ * call, not in reaction to it. waitOffPower is the one that runs after a race:
+ * unanswered, it never returns, and the game renders at sixty with its scene
+ * progression stopped at the game over screen.
  */
 int traceWaitOnPower(void *object)
 {
@@ -399,14 +360,10 @@ int traceChkSelf(void *object)
 }
 
 /*
- * What the test menu's I/F INITIALIZE screen turns into PCB ERROR.
- *
- * getPCBError returns this->0x70 unless the three character error code starts
- * with 'E' and is not "?00", in which case it reports an error outright. That
- * sticky byte is set by a rejected reply, a failed write or a self check that
- * timed out, and nothing but clKickback::init clears it again - so a single bad
- * moment during start up is still being reported long afterwards. Log what it
- * is actually reading rather than guessing which of the three it was.
+ * What the test menu's I/F INITIALIZE screen turns into PCB ERROR. getPCBError
+ * returns this->0x70 unless the error code starts with 'E' and is not "?00".
+ * Only clKickback::init clears that sticky byte, so one bad moment during start
+ * up is still being reported long afterwards.
  */
 KickbackCall originalGetPcbError = nullptr;
 int lastPcbError = -1;
@@ -434,16 +391,15 @@ int traceGetPcbError(void *object)
 }
 
 /*
- * The self check request is bit 7 of clKickback's this->0x30, the byte
- * clKickback::sendJVS() publishes to the JVS general purpose output. Answering
- * it is n2Kickback's job now, from the read path, because none of the hooks
- * here keep running long enough to be relied on: the game stops calling its own
- * setters once a race is over, while clKickback::manage() carries on counting
- * unanswered requests until it reports E20.
+ * Where the self check is answered. The request bit - bit 7 of this->0x30, which
+ * sendJVS() publishes to the JVS general purpose output - is up for about one
+ * frame, so watching for it from the read path catches it by luck at best. This
+ * call is the request.
  */
 int answerSelfCheck(void *object)
 {
     const int result = originalRequestSelfCheck(object);
+    n2KickbackReportSelfCheck();
     traceState("requestSelfCheck", object, result);
     return result;
 }
@@ -649,9 +605,16 @@ extern "C" int n2SteeringIoInstallHooks(void)
     installed += n2HookSymbolWithOriginal("_ZN10clKickback6offTrqEb",
                       reinterpret_cast<void *>(offTorque),
                       reinterpret_cast<void **>(&originalOffTorque));
-    installed += n2HookSymbolWithOriginal("_ZN10clKickback16requestSelfCheckEv",
+    // The only place the self check is answered from, so a failure here is the
+    // handle check failing rather than one feature being quietly missing.
+    const int selfCheckHooked =
+        n2HookSymbolWithOriginal("_ZN10clKickback16requestSelfCheckEv",
                       reinterpret_cast<void *>(answerSelfCheck),
                       reinterpret_cast<void **>(&originalRequestSelfCheck));
+    if (!selfCheckHooked)
+        log_warn("Namco N2 steering: clKickback::requestSelfCheck not hooked, the "
+                 "handle check will report E20");
+    installed += selfCheckHooked;
     installed += n2HookSymbolWithOriginal("_ZN10clKickback15setTRQPowerTypeEi",
                       reinterpret_cast<void *>(setTrqPowerType),
                       reinterpret_cast<void **>(&originalSetTrqPowerType));

@@ -10,20 +10,16 @@
 #include "../../../log/log.h"
 
 /*
- * WMMT3 statically links NVIDIA's nForce OpenAL implementation instead of
- * pulling in libopenal.so, so the library substitution the loader performs for
- * Lindbergh titles never applies.  That embedded implementation reaches the
- * hardware through ioctl(0xc0044d6f) on /dev/dsp, a node owned by the nvsound
- * kernel module, and mmaps the APU registers behind it.  Neither exists on
- * Windows, so every mixer call lands in a dead back end and the game stays
- * silent while still reporting success.
+ * WMMT3 statically links NVIDIA's nForce OpenAL instead of pulling in
+ * libopenal.so, so the loader's library substitution never applies. That
+ * implementation reaches the hardware through ioctl(0xc0044d6f) on /dev/dsp and
+ * mmaps the APU registers behind it - neither exists on Windows, so every mixer
+ * call lands in a dead back end and reports success.
  *
- * The game itself only uses plain OpenAL 1.1 entry points (the NV extensions
- * are internal to the bundled implementation), so the whole embedded stack is
- * bypassed by redirecting those exported symbols to the OpenAL Soft build that
- * already ships in ll-deps.  The ELF is i386 cdecl and AL_APIENTRY is __cdecl
- * on Windows, so the two calling conventions match and the DLL exports can be
- * used as MinHook detours directly.
+ * The game only uses plain OpenAL 1.1 entry points, so the embedded stack is
+ * bypassed by redirecting those to the OpenAL Soft build in ll-deps. The ELF is
+ * i386 cdecl and AL_APIENTRY is __cdecl, so the DLL exports work as MinHook
+ * detours directly.
  */
 
 namespace

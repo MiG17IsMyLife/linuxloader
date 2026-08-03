@@ -280,13 +280,10 @@ extern "C"
     int bridgeSdl12GLSetAttribute(int attribute, int value)
     {
         /*
-         * The pixel-format attributes arrive after the loader has already made
-         * the window, so nothing can be done with them and they are noted and
-         * dropped.  Swap control is the exception: it is not a format at all
-         * but the presentation rate, it still takes effect on a live context,
-         * and SDL3 spells it as a call rather than an attribute.  Dropping it
-         * with the rest left Counter-Strike Neo presenting as fast as the
-         * driver would go.
+         * Pixel-format attributes arrive after the window is made, so they are
+         * noted and dropped. Swap control is the exception: it is the
+         * presentation rate rather than a format, it takes effect on a live
+         * context, and SDL3 spells it as a call.
          */
         constexpr int sdl12SwapControl = 16;
 
@@ -351,14 +348,10 @@ extern "C"
         return &g_videoInfo;
     }
 
-    /*
-     * Presenting is also where the frame is paced, exactly as the display
-     * manager path does it for the Wangan titles.  An SDL 1.2 program that
-     * never asks for swap control gets no pacing from the driver either, so
-     * without this the game runs as fast as the card will draw and everything
-     * timed in frames - Counter-Strike Neo's logo and warning screens among
-     * them - plays at several times its intended speed.
-     */
+    // Presenting is also where the frame is paced, as the display manager path
+    // does for the Wangan titles. Without it a program that never asks for swap
+    // control runs as fast as the card draws, and anything timed in frames with
+    // it - Counter-Strike Neo's logo and warning screens - plays far too fast.
     void bridgeSdl12GLSwapBuffers()
     {
         // The guest's own caption stays in front of the reading; one that never
@@ -552,14 +545,10 @@ extern "C"
 
     // -------------------------------------------------------------- events
 
-    /*
-     * Counter-Strike Neo is played on a keyboard and mouse and reads both from
-     * here, so this is the whole of its input: the host's events translated
-     * into the shapes and key numbers SDL 1.2 used.  Nothing else drains the
-     * host queue while such a game runs - it presents through SDL_GL_SwapBuffers
-     * rather than the display manager - so this is also the only place they can
-     * be collected.
-     */
+    // The whole of a keyboard-and-mouse game's input: host events translated
+    // into the shapes and key numbers SDL 1.2 used. Such a game presents through
+    // SDL_GL_SwapBuffers rather than the display manager, so nothing else drains
+    // the host queue and this is the only place events can be collected.
     int bridgeSdl12PollEvent(Sdl12Event *event)
     {
         std::lock_guard<std::mutex> lock(g_eventMutex);
@@ -998,15 +987,11 @@ extern "C"
     }
 
     /*
-     * Not an SDL entry point: Namco added it so the game could reach the display
-     * manager the arcade board's driver exposed.  Answering "no device" is not
-     * open to the bridge - none of Counter-Strike Neo's four call sites checks
-     * the result before reading the handle out of it - so a record has to come
-     * back, shaped the way those call sites read it: a handle at +4 that the
-     * adm* entry points accept, and a screen at +8 that one of them walks.
-     *
-     * The loader drives a single window, so there is a single device, and the
-     * adm* hooks answer for it whatever handle they are given.
+     * Not an SDL entry point: Namco added it to reach the arcade board's
+     * display manager. "No device" is not an option - none of Counter-Strike
+     * Neo's call sites checks the result before reading the handle out of it -
+     * so a record comes back shaped the way they read it: a handle at +4 and a
+     * screen at +8. One window, so one device, whatever handle is asked for.
      */
     struct Sdl12AdmScreen
     {

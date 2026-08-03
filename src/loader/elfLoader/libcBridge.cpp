@@ -803,17 +803,14 @@ namespace LibcBridge
     }
 
     /*
-     * A System N2 cabinet runs with TZ=UTC (set by .execrc) while its system
-     * clock holds the operator's local wall time, so gmtime() of that clock is
-     * what the game displays.  clDateTime::setLocalTime() relies on exactly
-     * that: it calls gettimeofday() and converts with gmtime_r(), never with
-     * localtime_r().  Handing it a true UTC epoch therefore puts the attract
-     * clock off by the host's UTC offset.
+     * A System N2 cabinet runs with TZ=UTC (set by .execrc) while its clock
+     * holds local wall time, and clDateTime::setLocalTime() relies on that: it
+     * converts with gmtime_r(), never localtime_r(). A true UTC epoch would put
+     * the attract clock off by the host's offset.
      *
-     * The loader reproduces the cabinet convention instead of rewriting the
-     * conversion: the clock sources below report local wall time, and
-     * localtime() behaves as UTC so nothing applies the offset twice.  Keeping
-     * both halves consistent also means gmtime()/timegm() still round-trip.
+     * So the loader reproduces the convention rather than rewriting the
+     * conversion: the clock sources report local wall time and localtime()
+     * behaves as UTC, which also keeps gmtime()/timegm() round-tripping.
      */
     long hostUtcOffsetSeconds()
     {

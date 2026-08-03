@@ -282,14 +282,10 @@ void sdlFfbStopSteering(void)
 
 static void applySteeringNow(const FfbSteeringState *original)
 {
-    /*
-     * A disabled state is driven to zero rather than torn down. The game
-     * toggles torque off and back on within a frame or two at a time - offTrq
-     * then onTrq, measured sixty odd milliseconds apart, over and over - and
-     * destroying every effect on each of those only to rebuild them is the same
-     * churn that cost frame time before, now reached through the enable flag
-     * instead of a magnitude.
-     */
+    // A disabled state is driven to zero rather than torn down: the game toggles
+    // torque off and back on sixty odd milliseconds apart, over and over, and
+    // rebuilding every effect each time costs the frame time this worker exists
+    // to save.
     FfbSteeringState zeroed;
     const FfbSteeringState *state = original;
 
@@ -428,14 +424,10 @@ static void applySteeringNow(const FfbSteeringState *original)
 
 /*
  * Every SDL haptic call runs here rather than on the thread that owns the
- * game's steering setters.
- *
- * A DirectInput parameter change is a driver round trip, and the game restates
- * its steering often enough that the three condition effects were costing
- * around eighty six updates a second on its own thread - enough frame time to
- * be visible while force feedback was active. The worker only ever applies the
- * newest state, so a burst of changes collapses into one update instead of
- * queueing up behind the driver.
+ * game's steering setters. A DirectInput parameter change is a driver round
+ * trip, and the game restates its steering about eighty six times a second -
+ * enough frame time to be visible. The worker applies only the newest state, so
+ * a burst collapses into one update.
  */
 static SDL_Thread *steeringWorker;
 static SDL_Mutex *steeringLock;

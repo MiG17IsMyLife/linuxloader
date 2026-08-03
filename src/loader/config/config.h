@@ -287,13 +287,10 @@ typedef struct
     int forceFeedbackDiagnostics;
 
     /*
-     * Force feedback tuning, all percentages except the reflection range.
-     *
-     * The cabinet's own fields are nominally much wider than a race ever uses -
-     * reflection is a signed byte but was measured swinging about thirty five
-     * counts - so normalising against the full width leaves the wheel at a
-     * fraction of its strength. The range is what counts as full deflection;
-     * lower means heavier.
+     * Force feedback tuning, all percentages except the reflection range. The
+     * cabinet's fields are wider than a race uses - reflection is a signed byte
+     * but only swings about thirty five counts - so the range says what counts
+     * as full deflection. Lower means heavier.
      */
     int ffbGain;
     int ffbSpringGain;
@@ -303,14 +300,11 @@ typedef struct
     int ffbInvert;
 
     /*
-     * Feel, rather than strength. Both percentages, both off by default.
-     *
-     * Neither reproduces anything about the cabinet - WMMT3 and 3DX+ are direct
-     * drive themselves, so the game's own viscosity is already the damping it
-     * intends. These are preference: a floor keeps the wheel from going fully
-     * slack on a base that feels too free without it, and a deadband stops a
-     * strong spring hunting at dead centre. Leave them at zero for what the
-     * game actually asks for.
+     * Feel rather than strength, both percentages, both off by default. Neither
+     * reproduces the cabinet - WMMT3 and 3DX+ are direct drive, so the game's
+     * own viscosity is the damping it intends. A floor keeps a wheel from going
+     * fully slack, a deadband stops a strong spring hunting at centre. Zero is
+     * what the game asks for.
      */
     int ffbDamperFloor;
     int ffbSpringDeadband;

@@ -25,17 +25,14 @@
 #include "../../../log/log.h"
 
 /*
- * The cabinet's card reader/writer hangs off /dev/ttyM2; here that line is a
- * named pipe served by an external YaCardEmu.  The game polls the port from
- * its sequence threads and asks for the device state once per frame, so
- * nothing on the game's side may ever block: a single Win32 call that waits -
- * CreateFile on a busy pipe, WaitNamedPipe, a blocking ReadFile - is enough to
- * stall rendering if it happens under a lock the frame path also takes.
+ * The card reader on /dev/ttyM2, here a named pipe served by an external
+ * YaCardEmu. The game polls it from the frame path, so nothing on its side may
+ * block - one waiting Win32 call under a lock the frame path also takes is
+ * enough to stall rendering.
  *
- * So the pipe is owned by one background thread.  It connects, reconnects and
- * moves bytes; the game-facing entry points only ever touch two byte queues
- * and an atomic state flag, and hold the lock just long enough to splice
- * bytes in or out.  No Win32 blocking call is made while the lock is held.
+ * So a background thread owns the pipe and does all the connecting and moving
+ * of bytes. The game-facing entry points touch two byte queues and an atomic
+ * flag, and no blocking call is ever made while the lock is held.
  */
 
 namespace
@@ -393,19 +390,14 @@ size_t framedLength(const std::deque<uint8_t> &bytes)
 }
 
 /*
- * Cancel (0x40) leaves YaCardEmu reporting ILLEGAL_COMMAND, and it keeps
- * reporting it on every following poll until some other command clears it.
- * That is fatal for the "no card" branch of the card-have screen: after the
- * player picks NO, clSeqCardHaveSelectThread::runSelect() cancels the pending
- * insert and only leaves its wait loop when the cancel finishes with a plain
- * job-end result.  ILLEGAL_COMMAND maps to CANT EXEC ERR, which sends it
- * straight back to re-arming the insert, so the new-card sequence - and with
- * it clCardDeviceGameService::requestCreate(), the only caller that ever asks
- * the dispenser for a blank card - is never reached.
+ * YaCardEmu answers Cancel (0x40) with ILLEGAL_COMMAND and keeps reporting it
+ * until another command clears it. That hangs the "no card" branch:
+ * runSelect() leaves its wait loop only on a plain job-end result, and
+ * ILLEGAL_COMMAND maps to CANT EXEC ERR, which re-arms the insert instead - so
+ * the new-card sequence is never reached.
  *
- * The cabinet's reader answers a cancel that actually aborted a command with
- * NO_JOB, so that is what the game is handed here.  Only the status reply to a
- * cancel is touched; every other frame passes through untouched.
+ * Real hardware answers a cancel that aborted a command with NO_JOB. Only the
+ * status reply to a cancel is touched.
  */
 void neutraliseCancelStatus(std::vector<uint8_t> &frame)
 {
@@ -435,15 +427,11 @@ void dropQueues()
 }
 
 /*
- * Reader replies have to arrive at the speed the cabinet's line runs at.
- * clCardPrinter keeps the last status byte it saw and samples that cache when
- * the game asks it to do something; a named pipe hands a whole reply over in
- * one go, so a status the reader only holds briefly - notably the
- * ILLEGAL_COMMAND that real hardware raises in response to Cancel - lands in
- * the cache far more often than it would at 38400 baud.  That is what makes
- * the new-card path see "cannot execute" on every attempt.
+ * Replies are paced to the cabinet's line speed. clCardPrinter caches the last
+ * status byte it saw, and a pipe delivering a whole reply at once puts a
+ * briefly-held status into that cache far more often than 38400 baud would.
  *
- * etc/config.ini runs the emulator at 38400 8N1, i.e. ten bits per byte.
+ * etc/config.ini runs the emulator at 38400 8N1, ten bits per byte.
  */
 constexpr double serialBytesPerMillisecond = 38400.0 / 10.0 / 1000.0;
 
