@@ -424,15 +424,8 @@ int traceSend(void *object)
 
 int traceReceive(void *object)
 {
-    const uint8_t before = object ? static_cast<const uint8_t *>(object)[0x71] : 0;
-
     const int result = originalReceive(object);
-
-    if (before && getConfig()->namcoN2.forceFeedbackDiagnostics)
-        traceState("receive inside the calibration window", object, result);
-    else
-        traceRepeating("receive", object, result, receiveCalls);
-
+    traceRepeating("receive", object, result, receiveCalls);
     return result;
 }
 
@@ -492,19 +485,6 @@ void installTraceHooks(void)
 
 void pollBoard(void)
 {
-    static int windowWasOpen = 0;
-    if (kickbackInstance && *kickbackInstance)
-    {
-        const uint8_t *fields = static_cast<const uint8_t *>(*kickbackInstance);
-        const int open = fields[0x71] != 0;
-        if (open != windowWasOpen)
-        {
-            windowWasOpen = open;
-            log_info("Namco N2 steering: calibration window %s",
-                     open ? "opened" : "closed");
-        }
-    }
-
     updateOutput([](N2SteeringOutputState &) {});
 }
 
