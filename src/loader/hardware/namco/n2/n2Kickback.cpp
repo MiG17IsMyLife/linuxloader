@@ -11,6 +11,7 @@
 #include <mutex>
 
 #include "n2.h"
+#include "../../common/jvs.h"
 #include "../../../config/config.h"
 #include "../../../log/log.h"
 
@@ -108,6 +109,51 @@ bool volunteeredReplyWelcome()
     int state = 0;
     std::memcpy(&state, fields + 0x2c, sizeof(state));
     return !(state == 0 && (fields[0x30] & 0x80) != 0);
+}
+
+/*
+ * The wheel position, for the test menu's I/F INITIALIZE screen only. It sets
+ * this->0x71, clears this->0x34 and waits about sixty polls for a report to set
+ * it again, twelve times over, drawing PCB ERROR if none arrives. Only an 'H'
+ * sets that flag, and only with force feedback on does the screen take the
+ * path at all.
+ *
+ * Both conditions gate it. Outside the window an 'H' answers a torque frame
+ * without touching this->0x2c, so the request stays unanswered and send()
+ * counts to E20; with this->0x34 already set, nothing is waiting for one and
+ * more would only starve the acknowledgements.
+ *
+ * Caller holds bufferMutex.
+ */
+bool calibrationWindowOpen = false;
+
+void stagePositionReport()
+{
+    const uint8_t *fields = boardFields();
+
+    const bool open = fields && fields[0x71] != 0;
+    if (open != calibrationWindowOpen)
+    {
+        calibrationWindowOpen = open;
+        traceWindow = 60;
+        log_info("Namco N2 steering: I/F INITIALIZE calibration window %s",
+                 open ? "opened" : "closed");
+    }
+
+    if (!open || fields[0x34] != 0 || !volunteeredReplies.empty())
+        return;
+
+    const JVSIO *io = getJVSIO();
+    const int maximum = io->analogueMax > 0 ? io->analogueMax : 1;
+    int raw = io->state.analogueChannel[ANALOGUE_1];
+    raw = raw < 0 ? 0 : (raw > maximum ? maximum : raw);
+
+    // decordResultCode reads the two bytes as one big endian word, so the wheel
+    // goes out at the width the JVS channel carries it.
+    const unsigned position =
+        (unsigned)((long long)raw * 0xffff / maximum) & 0xffff;
+    const uint8_t report[3] = {'H', (uint8_t)(position >> 8), (uint8_t)position};
+    volunteeredReplies.assign(report, report + sizeof(report));
 }
 
 // Replies are three printable characters, so show them as such rather than hex.
@@ -262,6 +308,8 @@ extern "C" int n2KickbackSerialBytesAvailable(int fd)
 
     std::lock_guard<std::mutex> lock(bufferMutex);
 
+    stagePositionReport();
+
     // Whichever the read would hand over. The acknowledgement is always on
     // offer; a volunteered reply only once this->0x2c will accept it.
     if (!volunteeredReplies.empty() && volunteeredReplyWelcome())
@@ -278,6 +326,8 @@ extern "C" int n2KickbackSerialRead(int fd, void *buffer, size_t count)
     }
 
     std::lock_guard<std::mutex> lock(bufferMutex);
+
+    stagePositionReport();
 
     // A volunteered reply goes first when this->0x2c will take it, otherwise
     // the acknowledgement does and it waits for the next read. Never both: the

@@ -26,11 +26,12 @@ extern "C" {
  *     receive() has its own timeout onto the same error.
  *   - One reply per frame, replacing rather than queueing, or the game ends up
  *     reading answers to requests it made minutes ago.
- *   - A volunteered reply - a power report or the self check answer - waits
- *     until this->0x2c is not 0. decordResultCode() refuses a "C06" at 0 while
- *     the self check bit is up by writing "E20" itself. The wait is short:
- *     exec() puts the field back to 3 after a power ramp, and waitSelfCheck
- *     rewrites it to 3 while it polls.
+ *   - Volunteered replies - a power report, the self check answer, the test
+ *     menu's position report - are queued apart from the acknowledgements and
+ *     take priority over them. A "C06" among them waits until this->0x2c is not
+ *     0: decordResultCode() refuses one at 0 while the self check bit is up by
+ *     writing "E20" itself. The wait is short, since exec() puts the field back
+ *     to 3 after a power ramp and waitSelfCheck rewrites it while it polls.
  *
  * Output is driven from n2SteeringIo.cpp; this file is only the wire.
  */
