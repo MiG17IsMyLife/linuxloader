@@ -9,6 +9,7 @@
 
 #include "../../../config/config.h"
 #include "../../ffb/sdlFfbBackend.h"
+#include "../../../input/sdlInput.h"
 #include "../../../log/log.h"
 #include "n2Kickback.h"
 
@@ -70,17 +71,41 @@ void applySdlSteering(const N2SteeringOutputState *state, void *)
     translated.center = std::clamp(centred * kickbackCentreScale, -32768, 32767);
 
     /*
-     * Coefficients run to 127, not 255. Halving every force was most of why the
-     * wheel felt light.
+     * Coefficients run to 127, which is where full deflection sits for both the
+     * cabinet's board and TeknoParrotUi's own wheel output.
+     *
+     * Reflection is different. Its byte is signed and nominally reaches 127, but
+     * a race was measured using about thirty five counts of it, so normalising
+     * against the full width leaves the wheel at a quarter of its strength.
+     * FFB_REFLECT_RANGE is what counts as full instead - the same trick, and the
+     * same reason, as the Range that TeknoParrotUi derives from its weight
+     * setting.
      */
+    const EmulatorConfig *config = getConfig();
+    const float gain = (float)config->namcoN2.ffbGain / 100.0f;
+    const int range = config->namcoN2.ffbReflectRange > 0
+                          ? config->namcoN2.ffbReflectRange
+                          : 127;
+
+    float reflect = state->reflection != 0 ? (float)state->reflection / (float)range
+                                           : state->reflectionStrength;
+    if (config->namcoN2.ffbInvert)
+        reflect = -reflect;
+
     translated.enabled = state->torqueEnabled && state->powerType != 0 &&
                          state->motorRunning;
-    translated.springStrength = (float)state->spring / 127.0f * scale;
-    translated.damperStrength = (float)state->viscosity / 127.0f * scale;
-    translated.constantForce = (state->reflection != 0
-                                   ? (float)state->reflection / 127.0f
-                                   : state->reflectionStrength) * scale;
-    translated.vibrationStrength = state->vibrationStrength * scale;
+    translated.springStrength = (float)state->spring / 127.0f * scale * gain *
+                                (float)config->namcoN2.ffbSpringGain / 100.0f;
+    translated.damperStrength = (float)state->viscosity / 127.0f * scale * gain *
+                                (float)config->namcoN2.ffbDamperGain / 100.0f;
+    translated.constantForce = reflect * scale * gain;
+    translated.vibrationStrength = state->vibrationStrength * scale * gain *
+                                   (float)config->namcoN2.ffbVibrationGain / 100.0f;
+    translated.damperFloor = (float)config->namcoN2.ffbDamperFloor / 100.0f;
+    translated.springDeadband = (float)config->namcoN2.ffbSpringDeadband / 100.0f;
+    // Read straight from the loader's own input state, so it is whatever device
+    // the player actually bound steering to rather than a guess at an axis.
+    translated.wheelPosition = gActionStates[PLAYER_1][LA_Steer].analogValue;
     translated.vibrationPeriodMs = state->vibrationPeriod;
     translated.vibrationDurationMs = state->vibrationDuration;
 
@@ -374,29 +399,35 @@ int traceChkSelf(void *object)
 }
 
 /*
- * Ground truth for the whole exchange: which three bytes the game actually
- * collected, whether it accepted them, and what they did to the state field
- * every wait in clKickback keys off. Everything else here is inference from the
- * disassembly; this is the game telling us directly.
+ * What the test menu's I/F INITIALIZE screen turns into PCB ERROR.
+ *
+ * getPCBError returns this->0x70 unless the three character error code starts
+ * with 'E' and is not "?00", in which case it reports an error outright. That
+ * sticky byte is set by a rejected reply, a failed write or a self check that
+ * timed out, and nothing but clKickback::init clears it again - so a single bad
+ * moment during start up is still being reported long afterwards. Log what it
+ * is actually reading rather than guessing which of the three it was.
  */
-using DecodeReply = int (*)(void *, const unsigned char *);
-DecodeReply originalDecodeReply = nullptr;
+KickbackCall originalGetPcbError = nullptr;
+int lastPcbError = -1;
 
-int traceDecodeReply(void *object, const unsigned char *reply)
+int traceGetPcbError(void *object)
 {
-    int before = -1;
-    if (object)
-        std::memcpy(&before, static_cast<const uint8_t *>(object) + 0x2c, sizeof(before));
+    const int result = originalGetPcbError(object);
 
-    const int result = originalDecodeReply(object, reply);
-
-    if (getConfig()->namcoN2.forceFeedbackDiagnostics && object && reply)
+    if (object && result != lastPcbError)
     {
-        int after = 0;
-        std::memcpy(&after, static_cast<const uint8_t *>(object) + 0x2c, sizeof(after));
-        if (after != before)
-            log_info("N2 kickback: reply \"%c%c%c\" accepted=%d state %d -> %d",
-                     reply[0], reply[1], reply[2], result, before, after);
+        lastPcbError = result;
+        const uint8_t *fields = static_cast<const uint8_t *>(object);
+        char error[4] = {};
+        for (int i = 0; i < 3; ++i)
+        {
+            const uint8_t byte = fields[0x6c + i];
+            error[i] = (byte >= 0x20 && byte < 0x7f) ? (char)byte : '.';
+        }
+        log_warn("Namco N2 steering: getPCBError -> %d (code \"%s\", sticky=%u)",
+                 result, error, fields[0x70]);
+        traceState("getPCBError", object, result);
     }
 
     return result;
@@ -485,9 +516,9 @@ void installTraceHooks(void)
     n2HookSymbolWithOriginal("_ZN10clKickback7receiveEv",
                              reinterpret_cast<void *>(traceReceive),
                              reinterpret_cast<void **>(&originalReceive));
-    n2HookSymbolWithOriginal("_ZN10clKickback16decordResultCodeEPKh",
-                             reinterpret_cast<void *>(traceDecodeReply),
-                             reinterpret_cast<void **>(&originalDecodeReply));
+    n2HookSymbolWithOriginal("_ZN10clKickback11getPCBErrorEv",
+                             reinterpret_cast<void *>(traceGetPcbError),
+                             reinterpret_cast<void **>(&originalGetPcbError));
     n2HookSymbolWithOriginal("_ZN10clKickback6manageEv",
                              reinterpret_cast<void *>(traceManage),
                              reinterpret_cast<void **>(&originalManage));

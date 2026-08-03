@@ -10,6 +10,7 @@
 #include <mutex>
 
 #include "n2.h"
+#include "../../common/jvs.h"
 #include "../../../config/config.h"
 #include "../../../log/log.h"
 
@@ -94,6 +95,7 @@ bool motorPowered = false;
 unsigned long framesSeen = 0;
 unsigned long repliesTaken = 0;
 unsigned long selfCheckRefills = 0;
+unsigned long positionsQueued = 0;
 
 void reportFrame(const uint8_t *frame)
 {
@@ -107,6 +109,64 @@ void reportFrame(const uint8_t *frame)
         written += static_cast<size_t>(
             std::snprintf(hex + written, sizeof(hex) - written, "%02X ", frame[i]));
     log_debug("Namco N2 steering: frame %lu from the game: %s", framesSeen, hex);
+}
+
+/*
+ * The wheel position report.
+ *
+ * decordResultCode turns 'H' followed by a big endian ten bit value into
+ * this->0x54, and sets this->0x34 to say a position has arrived. The test
+ * menu's I/F INITIALIZE screen polls that flag: without it the screen shows
+ * STEERING 000 and eventually gives up with PCB ERROR, which is exactly what it
+ * was doing. Unlike the power reports this touches neither this->0x2c nor
+ * anything waitSelfCheck reads, so it is safe to send whenever the board is
+ * asked for something.
+ *
+ * The count comes from the same JVSIO the JVS path publishes, so the board and
+ * the I/O board cannot disagree about where the wheel is.
+ */
+void queuePosition()
+{
+    const JVSIO *io = getJVSIO();
+    const int maximum = io->analogueMax > 0 ? io->analogueMax : 1;
+    int raw = io->state.analogueChannel[ANALOGUE_1];
+    raw = raw < 0 ? 0 : (raw > maximum ? maximum : raw);
+
+    // 0..1023 about a centre of 511, the same ten bits the torque field uses.
+    int position = static_cast<int>(static_cast<long long>(raw) * 1023 / maximum);
+    position = position < 0 ? 0 : (position > 1023 ? 1023 : position);
+
+    const uint8_t frame[3] = {'H', static_cast<uint8_t>((position >> 8) & 0xff),
+                              static_cast<uint8_t>(position & 0xff)};
+    replyBytes.insert(replyBytes.end(), frame, frame + sizeof(frame));
+
+    /*
+     * The test menu's I/F INITIALIZE screen clears clKickback's this->0x34 and
+     * then counts down waiting for a position report to set it again, so
+     * whether these are being queued at all - and whether the game is reading
+     * them - is the difference between that screen working and giving up with
+     * PCB ERROR.
+     */
+    if (++positionsQueued == 1 || positionsQueued % 600 == 0)
+    {
+        /*
+         * this->0x34 is the flag the screen waits on and this->0x54 the value
+         * it wants, both set by decordResultCode when it accepts an 'H'. Report
+         * them next to what was queued: if the game is taking these replies and
+         * the flag is still clear, they are not being parsed as position
+         * reports, which is a different problem from not sending them.
+         */
+        const uint8_t *object =
+            kickbackInstance ? static_cast<const uint8_t *>(*kickbackInstance) : nullptr;
+        int accepted = -1;
+        if (object)
+            std::memcpy(&accepted, object + 0x54, sizeof(accepted));
+
+        log_info("Namco N2 steering: queued %lu positions (count %d), game took "
+                 "%lu replies, flag34=%d accepted=%d",
+                 positionsQueued, position, repliesTaken,
+                 object ? object[0x34] : -1, accepted);
+    }
 }
 
 // Caller holds bufferMutex.
@@ -130,7 +190,11 @@ void refillReply()
      * by n2KickbackReportMotorPower where the transitions happen.
      */
     if (!object || (object[0x30] & 0x80) == 0)
+    {
+        // Nothing to acknowledge, so just say where the wheel is.
+        queuePosition();
         return;
+    }
 
     // The check wants the motor reported running and then stopped, the pair
     // decordResultCode turns into this->0x2c of 0 and then 1 - what
@@ -139,6 +203,7 @@ void refillReply()
                       healthyResult + sizeof(healthyResult));
     replyBytes.insert(replyBytes.end(), selfCheckComplete,
                       selfCheckComplete + sizeof(selfCheckComplete));
+    queuePosition();
 
     if (++selfCheckRefills == 1 || selfCheckRefills % 300 == 0)
         log_info("Namco N2 steering: answered %lu self check polls (motor %s)",

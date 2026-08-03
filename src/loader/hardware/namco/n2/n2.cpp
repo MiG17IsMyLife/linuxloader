@@ -979,6 +979,32 @@ extern "C" int n2InstallAdmHooks(void)
     return 1;
 }
 
+/*
+ * clSystemN2::isError reports the flag that JammaPCBErrorCheck turns into PCB
+ * ERROR on the test menu, and clSystemN2::execSystemN2Step2 sets it after a
+ * hundred and eighty consecutive JVIO failures - about nine tenths of a second.
+ * Whether that happened once during start up, before the loader's JVS slave was
+ * answering, or is still happening is the whole question, and the answer is the
+ * timestamp on the first true.
+ */
+namespace
+{
+bool (*originalSystemIsError)(void) = nullptr;
+bool systemErrorReported = false;
+
+bool traceSystemIsError(void)
+{
+    const bool result = originalSystemIsError();
+    if (result && !systemErrorReported)
+    {
+        systemErrorReported = true;
+        log_warn("Namco N2: clSystemN2 latched a system error - the test menu "
+                 "will report PCB ERROR from here on");
+    }
+    return result;
+}
+}
+
 extern "C" int n2InstallHooks(void)
 {
     if (!n2IsDetected())
@@ -1013,6 +1039,9 @@ extern "C" int n2InstallHooks(void)
     // Silence is not fatal, missing openal32.dll must not abort startup.
     n2AudioInstallHooks();
 
+    n2HookSymbolWithOriginal("_ZN10clSystemN27isErrorEv",
+                             reinterpret_cast<void *>(traceSystemIsError),
+                             reinterpret_cast<void **>(&originalSystemIsError));
     n2HookSymbolWithOriginal("_ZN23clCardDeviceGameService16requestGetStatusEv",
                              reinterpret_cast<void *>(getStatusCardDevice),
                              reinterpret_cast<void **>(&originalRequestGetStatus));

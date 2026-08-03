@@ -285,6 +285,35 @@ typedef struct
     int debugMode;
     int forceFeedbackEnabled;
     int forceFeedbackDiagnostics;
+
+    /*
+     * Force feedback tuning, all percentages except the reflection range.
+     *
+     * The cabinet's own fields are nominally much wider than a race ever uses -
+     * reflection is a signed byte but was measured swinging about thirty five
+     * counts - so normalising against the full width leaves the wheel at a
+     * fraction of its strength. The range is what counts as full deflection;
+     * lower means heavier.
+     */
+    int ffbGain;
+    int ffbSpringGain;
+    int ffbDamperGain;
+    int ffbVibrationGain;
+    int ffbReflectRange;
+    int ffbInvert;
+
+    /*
+     * Feel, rather than strength. Both percentages, both off by default.
+     *
+     * Neither reproduces anything about the cabinet - WMMT3 and 3DX+ are direct
+     * drive themselves, so the game's own viscosity is already the damping it
+     * intends. These are preference: a floor keeps the wheel from going fully
+     * slack on a base that feels too free without it, and a deadband stops a
+     * strong spring hunting at dead centre. Leave them at zero for what the
+     * game actually asks for.
+     */
+    int ffbDamperFloor;
+    int ffbSpringDeadband;
     /*
      * Raw counts the cabinet's potentiometers report at each end of their
      * travel. The test menu's steering initialisation screen shows these

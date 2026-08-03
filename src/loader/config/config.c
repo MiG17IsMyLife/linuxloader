@@ -120,6 +120,16 @@ void setDefaultValues(EmulatorConfig *cfg)
     cfg->namcoN2.debugMode = 0;
     cfg->namcoN2.forceFeedbackEnabled = 0;
     cfg->namcoN2.forceFeedbackDiagnostics = 0;
+    cfg->namcoN2.ffbGain = 100;
+    cfg->namcoN2.ffbSpringGain = 100;
+    cfg->namcoN2.ffbDamperGain = 100;
+    cfg->namcoN2.ffbVibrationGain = 100;
+    // Reflection was measured swinging about thirty five counts of its signed
+    // byte during a race, so this is where full strength lands rather than 127.
+    cfg->namcoN2.ffbReflectRange = 40;
+    cfg->namcoN2.ffbInvert = 0;
+    cfg->namcoN2.ffbDamperFloor = 0;
+    cfg->namcoN2.ffbSpringDeadband = 0;
     // The wheel swings its whole electrical range; the pedals stay inside the
     // window clInputDeviceJamma calibrates them in.
     cfg->namcoN2.steering.minimum = 0;
@@ -336,6 +346,22 @@ void applyIniConfig(EmulatorConfig *config, const IniConfig *ini)
         getInt(ini, "NamcoN2", "FFB_ENABLED", config->namcoN2.forceFeedbackEnabled);
     config->namcoN2.forceFeedbackDiagnostics = getInt(
         ini, "NamcoN2", "FFB_DIAGNOSTICS", config->namcoN2.forceFeedbackDiagnostics);
+    config->namcoN2.ffbGain =
+        getInt(ini, "NamcoN2", "FFB_GAIN", config->namcoN2.ffbGain);
+    config->namcoN2.ffbSpringGain =
+        getInt(ini, "NamcoN2", "FFB_SPRING_GAIN", config->namcoN2.ffbSpringGain);
+    config->namcoN2.ffbDamperGain =
+        getInt(ini, "NamcoN2", "FFB_DAMPER_GAIN", config->namcoN2.ffbDamperGain);
+    config->namcoN2.ffbVibrationGain =
+        getInt(ini, "NamcoN2", "FFB_VIBRATION_GAIN", config->namcoN2.ffbVibrationGain);
+    config->namcoN2.ffbReflectRange =
+        getInt(ini, "NamcoN2", "FFB_REFLECT_RANGE", config->namcoN2.ffbReflectRange);
+    config->namcoN2.ffbInvert =
+        getInt(ini, "NamcoN2", "FFB_INVERT", config->namcoN2.ffbInvert);
+    config->namcoN2.ffbDamperFloor =
+        getInt(ini, "NamcoN2", "FFB_DAMPER_FLOOR", config->namcoN2.ffbDamperFloor);
+    config->namcoN2.ffbSpringDeadband = getInt(
+        ini, "NamcoN2", "FFB_SPRING_DEADBAND", config->namcoN2.ffbSpringDeadband);
     config->namcoN2.steering.minimum =
         getInt(ini, "NamcoN2", "STEERING_RAW_MIN", config->namcoN2.steering.minimum);
     config->namcoN2.steering.maximum =

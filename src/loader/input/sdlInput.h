@@ -175,6 +175,14 @@ typedef struct
     float negativeContribution;
 } ActionState;
 
+/*
+ * Where every logical action's current value lives. Force feedback reads
+ * LA_Steer out of it so a wheel with no condition effects can still be given a
+ * centring force worked out here instead - which is what the cabinet's own
+ * board does against its encoder.
+ */
+extern ActionState gActionStates[MAX_ENTITIES][NUM_LOGICAL_ACTIONS];
+
 typedef struct
 {
     enum

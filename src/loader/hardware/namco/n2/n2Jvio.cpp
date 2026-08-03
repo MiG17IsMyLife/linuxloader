@@ -112,20 +112,24 @@ void answerRequest(const uint8_t *frame, size_t length)
         return;
     }
 
-    /*
-     * Kept at trace level for the manufacturer specific command, which is still
-     * undecoded: the game sends 0x70 as "E0 01 07 70 18 50 4C <a> <b> <sum>",
-     * built by n2JvioTxPl and reached from clKickback::sendJVS(). It is not the
-     * steering board's own conversation - that runs over /dev/ttyM1, see
-     * n2Kickback.h - so it is most likely the cabinet lamps, which clKickback
-     * also owns through setLampView() and setLampIntrude().
-     */
+    // Every request, for when the wire itself is in question.
     char hex[3 * 48 + 4] = {};
     size_t written = 0;
     for (size_t i = 0; i < length && written + 4 < sizeof(hex); i++)
         written += static_cast<size_t>(std::snprintf(hex + written, sizeof(hex) - written,
                                                      "%02X ", frame[i]));
     log_trace("Namco N2 JVS: request %s", hex);
+
+    /*
+     * The manufacturer specific command, called out separately because it is
+     * the one whose payload is still undecoded: "E0 01 07 70 18 50 4C 14 FE",
+     * built by n2JvioTxPl and sent from clSystemN2::initSystemN2 through
+     * clKickback::sendJVS. jvs.c acknowledges it with a bare status and the
+     * game is satisfied - it repeats every ten seconds and never retries - so
+     * the payload only matters if something later turns out to need it.
+     */
+    if (length > 3 && frame[3] == 0x70)
+        log_debug("Namco N2 JVS: manufacturer command %s", hex);
 
     JVSIO *io = getJVSIO();
     constexpr size_t calibrationCount =
@@ -179,6 +183,16 @@ void answerRequest(const uint8_t *frame, size_t length)
      */
     if (inputPacket.data[0] == CMD_RESET)
         return;
+
+    if (length > 3 && frame[3] == 0x70)
+    {
+        char reply[3 * 24 + 4] = {};
+        size_t at = 0;
+        for (int i = 0; i < packetSize && at + 4 < sizeof(reply); i++)
+            at += static_cast<size_t>(
+                std::snprintf(reply + at, sizeof(reply) - at, "%02X ", outputBuffer[i]));
+        log_debug("Namco N2 JVS: manufacturer reply %s", reply);
+    }
 
     std::lock_guard<std::mutex> lock(bufferMutex);
     if (replyBytes.size() + static_cast<size_t>(packetSize) > maximumQueuedBytes)
