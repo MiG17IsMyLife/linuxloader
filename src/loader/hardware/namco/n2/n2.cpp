@@ -979,14 +979,7 @@ extern "C" int n2InstallAdmHooks(void)
     return 1;
 }
 
-/*
- * clSystemN2::isError reports the flag that JammaPCBErrorCheck turns into PCB
- * ERROR on the test menu, and clSystemN2::execSystemN2Step2 sets it after a
- * hundred and eighty consecutive JVIO failures - about nine tenths of a second.
- * Whether that happened once during start up, before the loader's JVS slave was
- * answering, or is still happening is the whole question, and the answer is the
- * timestamp on the first true.
- */
+
 namespace
 {
 bool (*originalSystemIsError)(void) = nullptr;
@@ -1002,6 +995,25 @@ bool traceSystemIsError(void)
                  "will report PCB ERROR from here on");
     }
     return result;
+}
+
+using SetString = void (*)(void *, const char *, bool);
+SetString originalSetString = nullptr;
+const void *pcbErrorDrawnFrom = nullptr;
+
+void traceSetString(void *self, const char *text, bool flag)
+{
+    if (text && std::strstr(text, "PCB ERROR"))
+    {
+        const void *from = __builtin_return_address(0);
+        if (from != pcbErrorDrawnFrom)
+        {
+            pcbErrorDrawnFrom = from;
+            log_warn("Namco N2: \"PCB ERROR\" drawn, called from %p", from);
+        }
+    }
+
+    originalSetString(self, text, flag);
 }
 }
 
@@ -1042,6 +1054,9 @@ extern "C" int n2InstallHooks(void)
     n2HookSymbolWithOriginal("_ZN10clSystemN27isErrorEv",
                              reinterpret_cast<void *>(traceSystemIsError),
                              reinterpret_cast<void **>(&originalSystemIsError));
+    n2HookSymbolWithOriginal("_ZN12clSpriteFont9setStringEPKcb",
+                             reinterpret_cast<void *>(traceSetString),
+                             reinterpret_cast<void **>(&originalSetString));
     n2HookSymbolWithOriginal("_ZN23clCardDeviceGameService16requestGetStatusEv",
                              reinterpret_cast<void *>(getStatusCardDevice),
                              reinterpret_cast<void **>(&originalRequestGetStatus));

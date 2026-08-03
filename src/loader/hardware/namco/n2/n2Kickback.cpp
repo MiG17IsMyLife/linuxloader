@@ -147,6 +147,19 @@ void queuePosition()
      * them - is the difference between that screen working and giving up with
      * PCB ERROR.
      */
+    {
+        const uint8_t *live =
+            kickbackInstance ? static_cast<const uint8_t *>(*kickbackInstance) : nullptr;
+        if (live && live[0x71] != 0)
+        {
+            int held = 0;
+            std::memcpy(&held, live + 0x54, sizeof(held));
+            log_info("Namco N2 steering: calibration window open - queued count %d, "
+                     "flag34=%u held=%d",
+                     position, live[0x34], held);
+        }
+    }
+
     if (++positionsQueued == 1 || positionsQueued % 600 == 0)
     {
         /*

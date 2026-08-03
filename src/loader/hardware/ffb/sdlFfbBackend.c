@@ -329,14 +329,6 @@ static void applySteeringNow(const FfbSteeringState *original)
          */
         effect.condition.direction.type = SDL_HAPTIC_STEERING_AXIS;
         effect.condition.length = SDL_HAPTIC_INFINITY;
-        /*
-         * Centre the spring on the wheel's own centre, not the cabinet's.
-         *
-         * TeknoParrotUi pins this at zero for the same board, and the game's
-         * centre offset moves during a race - shifting where the wheel wants to
-         * sit rather than how hard it pulls, which reads as the centring being
-         * off rather than as the effect it is meant to be.
-         */
         effect.condition.center[0] = 0;
         effect.condition.right_sat[0] = effect.condition.left_sat[0] = 65535;
         effect.condition.deadband[0] =
@@ -373,16 +365,6 @@ static void applySteeringNow(const FfbSteeringState *original)
         applyEffect(&damperEffect, &effect);
     }
 
-    /*
-     * A device with no spring of its own still gets one.
-     *
-     * Plenty of wheels - and every gamepad - advertise constant force and
-     * nothing else, and on those the centring and the weight simply never
-     * arrived. Work the restoring force out from where the wheel is sitting and
-     * add it to the constant force, which is what the cabinet's board does
-     * against its own encoder. Devices that do have a real spring keep it,
-     * because the wheel computes that far more finely than a frame rate can.
-     */
     float constant = clampSigned(state->constantForce);
     if (!(activeFeatures & SDL_HAPTIC_SPRING) && spring > 0.001f)
     {
