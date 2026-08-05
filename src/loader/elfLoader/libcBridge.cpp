@@ -1579,13 +1579,7 @@ namespace LibcBridge
 
     int bridgePoll(struct pollfd *fds, int nfds, int timeout)
     {
-        log_trace("Intercepted poll");
-
-        for (int i = 0; i < nfds; i++)
-        {
-            fds[i].revents = 0;
-        }
-        return 0;
+        return NetworkBridge::bridgePoll(fds, nfds, timeout);
     }
 
     int bridgeWmemcmp(const uint32_t *s1, const uint32_t *s2, size_t n)

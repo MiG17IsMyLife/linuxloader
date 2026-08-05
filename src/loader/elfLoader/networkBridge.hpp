@@ -30,6 +30,14 @@ namespace NetworkBridge
 {
     void initBridges();
 
+    struct LinuxPollfd
+    {
+        int32_t fd;
+        int16_t events;
+        int16_t revents;
+    };
+    static_assert(sizeof(LinuxPollfd) == 8, "Linux pollfd layout mismatch");
+
     extern "C" unsigned long bridgeInet_addr(const char *cp);
     extern "C" int bridgeInet_aton(const char *cp, struct in_addr *inp);
     extern "C" int bridgeInet_pton(int af, const char *src, void *dst);
@@ -65,6 +73,7 @@ namespace NetworkBridge
     extern "C" uint32_t bridgeNtohl(uint32_t netlong);
     extern "C" uint32_t bridgeHtonl(uint32_t hostlong);
     extern "C" int bridgeSocketIoctl(int descriptor, unsigned long request, void *argument);
+    extern "C" int bridgePoll(void *fds, int nfds, int timeout);
     extern "C" int bridgeSocketPair(int descriptors[2]);
     bool isSocketDescriptor(int descriptor);
     int bridgeSocketRead(int descriptor, void *buffer, size_t length);

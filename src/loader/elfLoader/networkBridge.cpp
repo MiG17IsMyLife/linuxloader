@@ -918,6 +918,104 @@ extern "C" int bridgeSocketIoctl(int descriptor, unsigned long request, void *ar
     return -1;
 }
 
+static short linuxPollEventsToWinsock(short events)
+{
+    short translated = 0;
+    if (events & 0x001) // POLLIN
+        translated |= POLLRDNORM;
+    if (events & 0x002) // POLLPRI
+        translated |= POLLRDBAND;
+    if (events & 0x004) // POLLOUT
+        translated |= POLLWRNORM;
+    return translated;
+}
+
+static short winsockPollEventsToLinux(short events)
+{
+    short translated = 0;
+    if (events & POLLRDNORM)
+        translated |= 0x001; // POLLIN
+    if (events & POLLRDBAND)
+        translated |= 0x002; // POLLPRI
+    if (events & (POLLWRNORM | POLLWRBAND))
+        translated |= 0x004; // POLLOUT
+    if (events & POLLERR)
+        translated |= 0x008; // POLLERR
+    if (events & POLLHUP)
+        translated |= 0x010; // POLLHUP
+    if (events & POLLNVAL)
+        translated |= 0x020; // POLLNVAL
+    return translated;
+}
+
+extern "C" int NetworkBridge::bridgePoll(void *rawFds, int nfds, int timeout)
+{
+    if (nfds < 0 || (nfds > 0 && !rawFds))
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    auto *guestFds = static_cast<LinuxPollfd *>(rawFds);
+    std::vector<WSAPOLLFD> hostFds;
+    std::vector<int> guestIndexes;
+    hostFds.reserve(static_cast<size_t>(nfds));
+    guestIndexes.reserve(static_cast<size_t>(nfds));
+
+    int invalidCount = 0;
+    for (int i = 0; i < nfds; i++)
+    {
+        guestFds[i].revents = 0;
+        if (guestFds[i].fd < 0)
+            continue;
+
+        if (!NetworkBridge::isSocketDescriptor(guestFds[i].fd))
+        {
+            guestFds[i].revents = 0x020; // POLLNVAL
+            invalidCount++;
+            continue;
+        }
+
+        WSAPOLLFD host = {};
+        host.fd = NetworkBridge::hostSocket(guestFds[i].fd);
+        host.events = linuxPollEventsToWinsock(guestFds[i].events);
+        host.revents = 0;
+        hostFds.push_back(host);
+        guestIndexes.push_back(i);
+    }
+
+    if (hostFds.empty())
+    {
+        if (invalidCount == 0 && timeout != 0)
+        {
+            if (timeout < 0)
+                Sleep(INFINITE);
+            else
+                Sleep(static_cast<DWORD>(timeout));
+        }
+        return invalidCount;
+    }
+
+    const int ready = WSAPoll(hostFds.data(), static_cast<ULONG>(hostFds.size()), timeout);
+    if (ready == SOCKET_ERROR)
+    {
+        errno = mapWSAErrorToErrno(WSAGetLastError());
+        return -1;
+    }
+
+    int resultCount = invalidCount;
+    for (size_t i = 0; i < hostFds.size(); i++)
+    {
+        const short revents = winsockPollEventsToLinux(hostFds[i].revents);
+        guestFds[guestIndexes[i]].revents = revents;
+        if (revents != 0)
+            resultCount++;
+    }
+
+    log_trace("Network bridge: poll nfds=%d timeout=%d ready=%d", nfds, timeout, resultCount);
+    return resultCount;
+}
+
 namespace
 {
 constexpr int guestFdSetBits = 1024;
