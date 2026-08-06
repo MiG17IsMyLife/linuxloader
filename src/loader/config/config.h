@@ -120,6 +120,7 @@ typedef enum
 {
     GROUP_UNKNOWN,
     GROUP_WMMT3,
+    GROUP_MAXIMUM_HEAT_3D,
     GROUP_ABC,
     GROUP_HOD4,
     GROUP_HOD4_TEST,
@@ -184,7 +185,8 @@ typedef struct
 
 typedef enum
 {
-    NAMCO_N2_TYPE
+    NAMCO_N2_TYPE,
+    NAMCO_ES1_TYPE
 } JVSIOType;
 
 typedef struct
@@ -338,10 +340,23 @@ typedef struct
     NamcoN2NetworkConfig network;
 } NamcoN2Config;
 
+/*
+ * System ES1 is not a System N2 variant.  Keep its knobs separate so an ES1
+ * launch can never silently inherit N2 card, FFB, network, or JVS settings.
+ */
+typedef struct
+{
+    int cameraEnabled;
+    int dongleEnabled;
+    int serialDiagnostics;
+    int emulateJamma;
+} NamcoES1Config;
+
 typedef struct
 {
     ArcadePlatform platform;
     NamcoN2Config namcoN2;
+    NamcoES1Config namcoES1;
     int emulateRideboard;
     int emulateDriveboard;
     int emulateMotionboard;

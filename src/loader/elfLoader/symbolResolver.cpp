@@ -34,7 +34,7 @@
 #include "symbolResolver.hpp"
 #include "elfLoader.hpp"
 #include "../log/log.h"
-#include "../hardware/namco/n2/n2.h"
+#include "../platform/platformBackend.h"
 
 extern "C" void __gmon_start__()
 {
@@ -788,7 +788,7 @@ void SymbolResolver::PatchAllSOs()
 
 bool SymbolResolver::RunAllInits()
 {
-    n2InstallAdmHooks();
+    platformInstallAdmHooks();
 
     for (auto it = m_NativeLoaders.rbegin(); it != m_NativeLoaders.rend(); ++it)
     {

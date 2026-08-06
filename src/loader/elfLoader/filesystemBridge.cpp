@@ -7,6 +7,7 @@
 #include "virtualDeviceRegistry.hpp"
 #include "../graphics/sdlCalls.h"
 #include "../hardware/namco/n2/n2VirtualDevices.h"
+#include "../platform/platformBackend.h"
 #include "../log/log.h"
 #include <string>
 #include <windows.h>
@@ -26,12 +27,9 @@ namespace FileSystemBridge
 {
     static int bridgeOpenDescriptor(const char *path, int flags, ...)
     {
-        if (getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2)
-        {
-            const auto result = VirtualDeviceRegistry::open(path, flags);
-            if (result.claimed)
-                return result.descriptor;
-        }
+        const auto result = VirtualDeviceRegistry::open(path, flags);
+        if (result.claimed)
+            return result.descriptor;
 
         int mode = 0;
         if (flags & 0x40) // Linux O_CREAT
@@ -108,7 +106,7 @@ namespace FileSystemBridge
          * predicate consult the live platform when the guest opens a device.
          */
         VirtualDeviceRegistry::clear();
-        n2RegisterVirtualDevices();
+        platformRegisterVirtualDevices();
 
         // Standard I/O functions
         MAP("fopen", sharedFopen);

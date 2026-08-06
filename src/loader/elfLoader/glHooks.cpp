@@ -36,6 +36,35 @@ extern "C" void __attribute__((cdecl)) bridgeglTexParameteri(
     glad_glTexParameteri(target, name, value);
 }
 
+extern "C" void __attribute__((cdecl)) wrap_glBlitFramebufferEXT(
+    GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
+    GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1,
+    GLbitfield mask, GLenum filter)
+{
+    if (glad_glBlitFramebufferEXT)
+        glad_glBlitFramebufferEXT(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
+}
+
+extern "C" void __attribute__((cdecl)) wrap_glGetQueryiv(GLenum target, GLenum pname, GLint *params)
+{
+    if (glad_glGetQueryiv)
+        glad_glGetQueryiv(target, pname, params);
+}
+
+extern "C" void __attribute__((cdecl)) wrap_glMultiDrawArrays(GLenum mode, const GLint *first,
+                                                                const GLsizei *count, GLsizei drawcount)
+{
+    if (glad_glMultiDrawArrays)
+        glad_glMultiDrawArrays(mode, first, count, drawcount);
+}
+
+extern "C" void __attribute__((cdecl)) wrap_glRenderbufferStorageMultisampleEXT(
+    GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height)
+{
+    if (glad_glRenderbufferStorageMultisampleEXT)
+        glad_glRenderbufferStorageMultisampleEXT(target, samples, internalformat, width, height);
+}
+
 uint32_t GLHooks_ConsumeCompressedImageSize()
 {
     const uint32_t size = pendingCompressedImageSize;
@@ -317,6 +346,20 @@ extern "C" void __attribute__((cdecl)) wrap_glStencilOp(GLenum fail, GLenum zfai
 {
     if (glad_glStencilOp)
         glad_glStencilOp(fail, zfail, zpass);
+}
+
+extern "C" void __attribute__((cdecl)) wrap_glStencilFuncSeparate(GLenum face, GLenum func,
+                                                                    GLint ref, GLuint mask)
+{
+    if (glad_glStencilFuncSeparate)
+        glad_glStencilFuncSeparate(face, func, ref, mask);
+}
+
+extern "C" void __attribute__((cdecl)) wrap_glStencilOpSeparate(GLenum face, GLenum fail,
+                                                                 GLenum zfail, GLenum zpass)
+{
+    if (glad_glStencilOpSeparate)
+        glad_glStencilOpSeparate(face, fail, zfail, zpass);
 }
 
 extern "C" void __attribute__((cdecl)) wrap_glDepthFunc(GLenum func)
@@ -972,6 +1015,44 @@ extern "C" void __attribute__((cdecl)) wrap_glUniform2fv(GLint location, GLsizei
 {
     if (glad_glUniform2fv)
         glad_glUniform2fv(location, count, value);
+}
+
+extern "C" void __attribute__((cdecl)) wrap_glUniform2f(GLint location, GLfloat v0, GLfloat v1)
+{
+    if (glad_glUniform2f)
+        glad_glUniform2f(location, v0, v1);
+}
+
+extern "C" void __attribute__((cdecl)) wrap_glUniform2i(GLint location, GLint v0, GLint v1)
+{
+    if (glad_glUniform2i)
+        glad_glUniform2i(location, v0, v1);
+}
+
+extern "C" void __attribute__((cdecl)) wrap_glUniform3f(GLint location, GLfloat v0, GLfloat v1, GLfloat v2)
+{
+    if (glad_glUniform3f)
+        glad_glUniform3f(location, v0, v1, v2);
+}
+
+extern "C" void __attribute__((cdecl)) wrap_glUniform3i(GLint location, GLint v0, GLint v1, GLint v2)
+{
+    if (glad_glUniform3i)
+        glad_glUniform3i(location, v0, v1, v2);
+}
+
+extern "C" void __attribute__((cdecl)) wrap_glUniform4f(GLint location, GLfloat v0, GLfloat v1,
+                                                         GLfloat v2, GLfloat v3)
+{
+    if (glad_glUniform4f)
+        glad_glUniform4f(location, v0, v1, v2, v3);
+}
+
+extern "C" void __attribute__((cdecl)) wrap_glUniform4i(GLint location, GLint v0, GLint v1,
+                                                         GLint v2, GLint v3)
+{
+    if (glad_glUniform4i)
+        glad_glUniform4i(location, v0, v1, v2, v3);
 }
 
 extern "C" void __attribute__((cdecl)) wrap_glUniform2iv(GLint location, GLsizei count, const GLint *value)
@@ -2622,6 +2703,11 @@ void *GLHooks_GetProcAddress(const char *procName)
         return (void *)&wrap_glStencilMask;
     if (strcmp(procName, "glStencilOp") == 0)
         return (void *)&wrap_glStencilOp;
+
+    if (strcmp(procName, "glStencilFuncSeparate") == 0)
+        return (void *)&wrap_glStencilFuncSeparate;
+    if (strcmp(procName, "glStencilOpSeparate") == 0)
+        return (void *)&wrap_glStencilOpSeparate;
     if (strcmp(procName, "glTexCoord2f") == 0)
         return (void *)&wrap_glTexCoord2f;
     if (strcmp(procName, "glTexCoord2fv") == 0)
@@ -2670,6 +2756,26 @@ void *GLHooks_GetProcAddress(const char *procName)
         return (void *)&wrap_glUniform1iv;
     if (strcmp(procName, "glUniform2fv") == 0)
         return (void *)&wrap_glUniform2fv;
+    if (strcmp(procName, "glUniform2f") == 0)
+        return (void *)&wrap_glUniform2f;
+    if (strcmp(procName, "glUniform2i") == 0)
+        return (void *)&wrap_glUniform2i;
+    if (strcmp(procName, "glUniform3f") == 0)
+        return (void *)&wrap_glUniform3f;
+    if (strcmp(procName, "glUniform3i") == 0)
+        return (void *)&wrap_glUniform3i;
+    if (strcmp(procName, "glUniform4f") == 0)
+        return (void *)&wrap_glUniform4f;
+    if (strcmp(procName, "glUniform4i") == 0)
+        return (void *)&wrap_glUniform4i;
+    if (strcmp(procName, "glBlitFramebufferEXT") == 0)
+        return (void *)&wrap_glBlitFramebufferEXT;
+    if (strcmp(procName, "glGetQueryiv") == 0)
+        return (void *)&wrap_glGetQueryiv;
+    if (strcmp(procName, "glMultiDrawArrays") == 0)
+        return (void *)&wrap_glMultiDrawArrays;
+    if (strcmp(procName, "glRenderbufferStorageMultisampleEXT") == 0)
+        return (void *)&wrap_glRenderbufferStorageMultisampleEXT;
     if (strcmp(procName, "glUniform2iv") == 0)
         return (void *)&wrap_glUniform2iv;
     if (strcmp(procName, "glUniform3fv") == 0)

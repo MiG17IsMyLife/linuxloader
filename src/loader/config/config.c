@@ -9,6 +9,7 @@
 #include "iniParser.h"
 #include "../mainShared.h"
 #if defined(_WIN32) || defined(__MINGW32__)
+#include "../hardware/namco/es1/es1.h"
 #include "../hardware/namco/n2/n2.h"
 #endif
 
@@ -31,6 +32,27 @@ const char *GpuTypeStrings[] = {"Auto Detection", "NVIDIA", "AMD", "ATI", "INTEL
 
 static int detectGame(uint32_t elf_crc)
 {
+#if defined(_WIN32) || defined(__MINGW32__)
+    if (es1IsDetected())
+    {
+        config.platform = ARCADE_PLATFORM_NAMCO_ES1;
+        config.gameTitle = (char *)es1GetGameTitle();
+        config.gameShortTitle = (char *)es1GetGameShortTitle();
+        config.gameDVP = (char *)"Namco System ES1";
+        config.gameID = (char *)es1GetGameId();
+        config.gameStatus = NOT_WORKING;
+        config.jvsIOType = NAMCO_ES1_TYPE;
+        config.region = US;
+        config.gameReleaseYear = (char *)"2009";
+        config.gameNativeResolutions = (char *)"1360x768";
+        config.gameType = DRIVING;
+        config.width = 1360;
+        config.height = 768;
+        config.gameGroup = GROUP_MAXIMUM_HEAT_3D;
+        log_warn("System ES1 support is experimental: I/O devices are compatibility stubs");
+        return 0;
+    }
+
     if (n2IsDetected())
     {
         config.platform = ARCADE_PLATFORM_NAMCO_N2;
@@ -63,7 +85,8 @@ static int detectGame(uint32_t elf_crc)
         config.gameGroup = GROUP_WMMT3;
         return 0;
     }
-    log_error("Unsupported ELF: pacloader did not detect a Namco System N2 title");
+#endif
+    log_error("Unsupported ELF: pacloader did not detect a supported Namco System N2 or ES1 title");
     config.crc32 = UNKNOWN;
     return 1;
 }
@@ -115,6 +138,10 @@ void toLowerCase(char *str)
 void setDefaultValues(EmulatorConfig *cfg)
 {
     cfg->platform = ARCADE_PLATFORM_NAMCO_N2;
+    cfg->namcoES1.cameraEnabled = 1;
+    cfg->namcoES1.dongleEnabled = 1;
+    cfg->namcoES1.serialDiagnostics = 0;
+    cfg->namcoES1.emulateJamma = 1;
     strcpy(cfg->namcoN2.dongleId, "");
     strcpy(cfg->namcoN2.dongleId2, "");
     cfg->namcoN2.debugMode = 0;
@@ -338,6 +365,16 @@ static void getString(const IniConfig *ini, const char *section, const char *key
 
 void applyIniConfig(EmulatorConfig *config, const IniConfig *ini)
 {
+    // [NamcoES1]
+    config->namcoES1.cameraEnabled =
+        getInt(ini, "NamcoES1", "CAMERA_ENABLED", config->namcoES1.cameraEnabled);
+    config->namcoES1.dongleEnabled =
+        getInt(ini, "NamcoES1", "DONGLE_ENABLED", config->namcoES1.dongleEnabled);
+    config->namcoES1.serialDiagnostics =
+        getInt(ini, "NamcoES1", "SERIAL_DIAGNOSTICS", config->namcoES1.serialDiagnostics);
+    config->namcoES1.emulateJamma =
+        getInt(ini, "NamcoES1", "EMULATE_JAMMA", config->namcoES1.emulateJamma);
+
     // [NamcoN2]
     getString(ini, "NamcoN2", "DONGLE_ID", config->namcoN2.dongleId,
               sizeof(config->namcoN2.dongleId));

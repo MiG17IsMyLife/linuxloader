@@ -7,7 +7,7 @@
 #include "gccBridge.hpp"
 #include "networkBridge.hpp"
 #include "symbolResolver.hpp"
-#include "../hardware/namco/n2/n2.h"
+#include "../platform/platformBackend.h"
 #include "../config/config.h"
 #include "../graphics/sdlCalls.h"
 #include <csignal>
@@ -1056,11 +1056,12 @@ namespace LibcBridge
     int bridgeSystem(const char *command)
     {
         log_debug("system(\"%s\")", command);
-        int n2Result = n2HandleSystemCommand(command);
-        if (n2Result >= 0)
-            return n2Result;
-        if (n2IsDetected())
-            log_warn("Namco N2: passing unsupported system command to the host: %s", command ? command : "(null)");
+        int platformResult = platformHandleSystemCommand(command);
+        if (platformResult >= 0)
+            return platformResult;
+        if (platformIsDetected())
+            log_warn("%s: passing unsupported system command to the host: %s",
+                     platformName(), command ? command : "(null)");
 
         if (strcmp(command, "touch /var/tmp/mwlogo") == 0)
             command = "type nul > .\\tmp\\mwlogo";

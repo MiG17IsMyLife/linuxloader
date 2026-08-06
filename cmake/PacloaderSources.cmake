@@ -4,6 +4,7 @@ set(PACLOADER_SOURCES
     src/loader/initPacloader.c
     src/loader/mainShared.c
     src/loader/mainW.cpp
+    src/loader/platform/platformBackend.cpp
 
     src/loader/config/config.c
     src/loader/config/configIni.c
@@ -12,8 +13,11 @@ set(PACLOADER_SOURCES
 
     src/loader/elfLoader/cppBridge.cpp
     src/loader/elfLoader/elfLoader.cpp
+    src/loader/elfLoader/alsaCompatBridge.cpp
+    src/loader/elfLoader/es1CompatBridge.cpp
     src/loader/elfLoader/filesystemBridge.cpp
     src/loader/elfLoader/gccBridge.cpp
+    src/loader/elfLoader/glxBridge.cpp
     src/loader/elfLoader/glHooks.cpp
     src/loader/elfLoader/graphicsBridge.cpp
     src/loader/elfLoader/ipcBridge.cpp
@@ -29,6 +33,7 @@ set(PACLOADER_SOURCES
     src/loader/elfLoader/symbolResolver.cpp
     src/loader/elfLoader/termiosBridge.cpp
     src/loader/elfLoader/virtualDeviceRegistry.cpp
+    src/loader/elfLoader/x11Bridge.cpp
     src/loader/elfLoader/pthread/pthreadBarrier.cpp
     src/loader/elfLoader/pthread/pthreadCond.cpp
     src/loader/elfLoader/pthread/pthreadEmu.cpp
@@ -63,6 +68,8 @@ set(PACLOADER_SOURCES
     src/loader/hardware/namco/n2/n2Kickback.cpp
     src/loader/hardware/namco/n2/n2SteeringIo.cpp
     src/loader/hardware/namco/n2/n2VirtualDevices.cpp
+    src/loader/hardware/namco/es1/es1.cpp
+    src/loader/hardware/namco/es1/es1VirtualDevices.cpp
 
     src/loader/input/controlIniGen.c
     src/loader/input/sdlInput.c

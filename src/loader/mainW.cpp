@@ -27,7 +27,7 @@
 #include "frontend/frontendApi.h"
 #include "init.h"
 #include "input/sdlInput.h"
-#include "hardware/namco/n2/n2.h"
+#include "platform/platformBackend.h"
 #include "config/config.h"
 #include "mainShared.h"
 
@@ -154,7 +154,7 @@ int main(int argc, char *argv[], char *envp[])
 
     // CS Neo's engine is mapped as a launcher dependency. Its path-based N2
     // overrides must therefore be registered before the ELF relocation pass.
-    n2PrepareLoad(elfPath);
+    platformPrepareLoad(elfPath);
 
     if (!std::filesystem::exists("tmp"))
         std::filesystem::create_directory("tmp");
@@ -166,7 +166,7 @@ int main(int argc, char *argv[], char *envp[])
     bool initializedBeforeElfConstructors = false;
 
     if (!loader.Load(elfPath, [&]() {
-            if (!n2DetectGame(elfPath))
+            if (!platformDetectGame(elfPath))
                 return true;
 
             uint8_t *baseAddr = (uint8_t *)loader.GetBaseAddress();
@@ -175,7 +175,7 @@ int main(int argc, char *argv[], char *envp[])
             initMain(hasConfigPath ? g_n2ConfigPath : (char *)"",
                      hasControlsPath ? g_n2ControlsPath : (char *)"");
             // Install hooks after the ELF is ready.
-            n2InstallLateTextureHooks();
+            platformInstallLateHooks();
             initializedBeforeElfConstructors = true;
             return true;
         }))
@@ -194,7 +194,7 @@ int main(int argc, char *argv[], char *envp[])
         log_debug("Initializing main...");
         initMain(hasConfigPath ? g_n2ConfigPath : (char *)"",
                  hasControlsPath ? g_n2ControlsPath : (char *)"");
-        n2InstallLateTextureHooks();
+        platformInstallLateHooks();
     }
 
     int final_argc = 0;
@@ -212,7 +212,7 @@ int main(int argc, char *argv[], char *envp[])
         }
     }
 
-    if (getConfig()->platform == ARCADE_PLATFORM_NAMCO_N2 && final_argc == 1)
+    if (platformWantsCabinetArgument() && final_argc == 1)
     {
         if (getConfig()->namcoN2.debugMode)
         {

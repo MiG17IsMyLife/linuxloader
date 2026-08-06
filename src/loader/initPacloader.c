@@ -6,8 +6,7 @@
 #include "frontend/frontendApi.h"
 #include "hardware/common/jvs.h"
 #include "hardware/ffb/sdlFfbBackend.h"
-#include "hardware/namco/n2/n2.h"
-#include "hardware/namco/n2/n2CardReader.h"
+#include "platform/platformBackend.h"
 #include "input/sdlInput.h"
 #include "log/log.h"
 #include "mainShared.h"
@@ -63,13 +62,13 @@ void initMain(char *configPath, char *controlsPath)
     gWidth = getConfig()->width;
     gHeight = getConfig()->height;
 
-    if (getConfig()->platform != ARCADE_PLATFORM_NAMCO_N2)
+    if (!platformIsDetected())
     {
-        log_fatal("pacloader currently supports Namco System N2 titles only");
+        log_fatal("pacloader could not identify a supported Namco platform");
         exit(1);
     }
 
-    n2CardReaderRegisterCardControl();
+    platformRegisterCardControl();
     applyConsoleCodePage();
     initFpsLimiter();
 
@@ -86,7 +85,7 @@ void initMain(char *configPath, char *controlsPath)
         exit(1);
     }
 
-    if (n2InstallHooks() != 0)
+    if (platformInstallHooks() != 0)
         exit(1);
 
     if (MH_EnableHook(MH_ALL_HOOKS) != MH_OK)
@@ -97,7 +96,7 @@ void initMain(char *configPath, char *controlsPath)
 
     if (initSDL() != 0)
         exit(1);
-    if (n2InitializeGraphics() != 0)
+    if (platformInitializeGraphics() != 0)
         exit(1);
     pacGraphicsReportCapabilities();
     if (initJVS() != 0)
@@ -111,11 +110,12 @@ void initMain(char *configPath, char *controlsPath)
      * firmware after the loader had gone - the wheel came up stiff and stayed
      * that way until it was power cycled.
      */
-    atexit(sdlFfbShutdown);
+    if (platformIsN2())
+        atexit(sdlFfbShutdown);
 
     printf("\npacloader\n\n");
     printf("  GAME:        %s\n", getGameName());
-    printf("  PLATFORM:    Namco System N2\n");
+    printf("  PLATFORM:    %s\n", platformName());
     printf("  GAME ID:     %s\n", getGameId());
     printf("  DVP:         %s\n", getDvpName());
     printf("  GPU VENDOR:  %s\n", getConfig()->GPUVendorString);

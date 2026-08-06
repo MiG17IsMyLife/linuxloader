@@ -35,6 +35,30 @@ JVSIO io = {0};
  */
 int initJVS()
 {
+    if (getConfig()->platform == ARCADE_PLATFORM_NAMCO_ES1)
+    {
+        /*
+         * ES1's JAMMA/serial I/O is not the N2 Jvio board. This common state
+         * only gives the shared SDL input layer a defined profile while the
+         * ES1 serial protocol is implemented.
+         */
+        io.capabilities.switches = 24;
+        io.capabilities.coins = 2;
+        io.capabilities.players = 2;
+        io.capabilities.analogueInBits = 16;
+        io.capabilities.rightAlignBits = 0;
+        io.capabilities.analogueInChannels = 8;
+        io.capabilities.generalPurposeInputs = 0;
+        io.capabilities.generalPurposeOutputs = 0;
+        io.capabilities.analogueOutChannels = 0;
+        io.capabilities.commandVersion = 16;
+        io.capabilities.jvsVersion = 16;
+        io.capabilities.commsVersion = 16;
+        strncpy(io.capabilities.name, "namco ltd.;ES1-JAMMA;Ver1.00;USA,Driving",
+                sizeof(io.capabilities.name) - 1);
+        io.capabilities.name[sizeof(io.capabilities.name) - 1] = '\0';
+    }
+    else
     {
         /*
          * clSystemN2::initSystemN2() claims seven functions and clamps each to

@@ -181,11 +181,14 @@ bool ElfLoader::Load(const std::string &path, const std::function<bool()> &befor
     if (!LoadMapAndExport(path))
         return false;
 
+    log_info("ELF loader: processing shared-object relocations");
     if (!SymbolResolver::GetInstance().ProcessAllRelocations())
         return false;
 
+    log_info("ELF loader: processing main ELF relocations");
     if (!ProcessRelocations())
         return false;
+    log_info("ELF loader: main ELF relocations complete");
     SymbolResolver::GetInstance().PatchAllSOs();
 
     if (beforeInitializers && !beforeInitializers())

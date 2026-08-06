@@ -47,11 +47,14 @@ target_compile_options(pacloader PRIVATE
 
 target_link_options(pacloader PRIVATE
     -m32
-    -s
     -static-libgcc
     -static-libstdc++
     "SHELL:-Xlinker --stack -Xlinker 4194304,4194304"
     -Wl,--large-address-aware)
+
+if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_link_options(pacloader PRIVATE -s)
+endif()
 
 target_link_directories(pacloader PRIVATE ${PROJECT_SOURCE_DIR}/libs/win32)
 

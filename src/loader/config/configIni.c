@@ -18,7 +18,8 @@ int createDefaultIni(const char *filePath)
     setDefaultValues(&defaults);
 
     fprintf(file, "# pacloader configuration (Namco System N2 / ES1)\n\n");
-    fprintf(file, "[Platform]\nSYSTEM = N2\n\n");
+    /* Platform selection is detected from the game package. */
+    fprintf(file, "[Platform]\nSYSTEM = AUTO\n\n");
 
     fprintf(file, "[NamcoN2]\n");
     fprintf(file, "DONGLE_ID = \"%s\"\n", defaults.namcoN2.dongleId);
@@ -27,6 +28,12 @@ int createDefaultIni(const char *filePath)
     fprintf(file, "FFB_ENABLED = %s\n\n", defaults.namcoN2.forceFeedbackEnabled ? "true" : "false");
     fprintf(file, "FFB_DIAGNOSTICS = %s\n\n",
             defaults.namcoN2.forceFeedbackDiagnostics ? "true" : "false");
+
+    fprintf(file, "[NamcoES1]\n");
+    fprintf(file, "CAMERA_ENABLED = %s\n", defaults.namcoES1.cameraEnabled ? "true" : "false");
+    fprintf(file, "DONGLE_ENABLED = %s\n", defaults.namcoES1.dongleEnabled ? "true" : "false");
+    fprintf(file, "SERIAL_DIAGNOSTICS = %s\n", defaults.namcoES1.serialDiagnostics ? "true" : "false");
+    fprintf(file, "EMULATE_JAMMA = %s\n\n", defaults.namcoES1.emulateJamma ? "true" : "false");
 
     fprintf(file, "# YaCardEmu remains an external process.\n");
     fprintf(file, "YACARDEMU_ENABLED = %s\n", defaults.namcoN2.card.enabled ? "true" : "false");
