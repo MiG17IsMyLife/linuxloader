@@ -174,6 +174,8 @@ int main(int argc, char *argv[], char *envp[])
                 partialElfCrc = getCrc32Mem(baseAddr + 10, 0x4000);
             initMain(hasConfigPath ? g_n2ConfigPath : (char *)"",
                      hasControlsPath ? g_n2ControlsPath : (char *)"");
+            // Install hooks after the ELF is ready.
+            n2InstallLateTextureHooks();
             initializedBeforeElfConstructors = true;
             return true;
         }))
@@ -192,6 +194,7 @@ int main(int argc, char *argv[], char *envp[])
         log_debug("Initializing main...");
         initMain(hasConfigPath ? g_n2ConfigPath : (char *)"",
                  hasControlsPath ? g_n2ControlsPath : (char *)"");
+        n2InstallLateTextureHooks();
     }
 
     int final_argc = 0;

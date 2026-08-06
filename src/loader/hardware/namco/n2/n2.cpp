@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -471,6 +472,7 @@ AdmMode **admChooseMode()
 {
     std::memset(&admMode, 0, sizeof(admMode));
     std::memcpy(admMode.ident, "MOCF", 4);
+    // Use the configured render size.
     admMode.width = static_cast<uint32_t>(getConfig()->width);
     admMode.height = static_cast<uint32_t>(getConfig()->height);
     admMode.refreshMilliHz = 60000;
@@ -554,10 +556,20 @@ int admSwapInterval(int interval)
 using CreateTextureHandle = int (*)(void *, int, int);
 using SetTexture = int (*)(void *, int, int);
 using SetTextureRegion = int (*)(void *, int, int, int, int, int, int, void *);
+using SetViewport = void (*)(void *, int, int, int, int, float, float);
+using MakePerspectiveProjection = void (*)(void *, float, float, float, float, float);
+using LuaGetGlobal = int (*)(void *, const char *);
+using LuaSetGlobal = void (*)(void *, const char *);
+using LuaPushNumber = void (*)(void *, double);
 
 CreateTextureHandle originalCreateTextureHandle = nullptr;
 SetTexture originalSetTexture = nullptr;
 SetTextureRegion originalSetTextureRegion = nullptr;
+SetViewport originalSetViewport = nullptr;
+MakePerspectiveProjection originalMakePerspectiveProjection = nullptr;
+LuaGetGlobal originalLuaGetGlobal = nullptr;
+LuaSetGlobal luaSetGlobal = nullptr;
+LuaPushNumber luaPushNumber = nullptr;
 using FindMetaType = void *(*)(const char *);
 FindMetaType originalFindMetaType = nullptr;
 using ArenaMallocAligned = void *(*)(void *, uint32_t, uint32_t);
@@ -771,6 +783,65 @@ int createTextureHandle(void *self, int width, int height)
     return originalCreateTextureHandle(self, width, height);
 }
 
+void setViewport(void *self, int x, int y, int width, int height,
+                 float nearPlane, float farPlane)
+{
+    if (n2IsWanganTitle() && width == 88 && height == 82)
+    {
+        // Scale the minimap viewport.
+        width = static_cast<int>(static_cast<float>(getConfig()->width) * 0.1375f);
+        height = static_cast<int>(static_cast<float>(getConfig()->height) * 0.17f);
+    }
+
+    originalSetViewport(self, x, y, width, height, nearPlane, farPlane);
+}
+
+void makePerspectiveProjection(void *self, float fov, float a2,
+                               float aspectRatio, float a4, float a5)
+{
+    constexpr float originalAspectRatio = 640.0f / 480.0f;
+    const float configuredAspectRatio =
+        static_cast<float>(getConfig()->width) / static_cast<float>(getConfig()->height);
+
+    // Preserve the camera framing at the configured aspect.
+    if (aspectRatio == originalAspectRatio)
+        aspectRatio = configuredAspectRatio;
+    fov = fov / originalAspectRatio * aspectRatio;
+
+    originalMakePerspectiveProjection(self, fov, a2, aspectRatio, a4, a5);
+}
+
+int luaGetGlobal(void *state, const char *global)
+{
+    if (state && global && luaPushNumber && luaSetGlobal)
+    {
+        if (std::strcmp(global, "SCREEN_XSIZE") == 0)
+        {
+            luaPushNumber(state, static_cast<double>(getConfig()->width));
+            luaSetGlobal(state, global);
+        }
+        else if (std::strcmp(global, "SCREEN_YSIZE") == 0)
+        {
+            luaPushNumber(state, static_cast<double>(getConfig()->height));
+            luaSetGlobal(state, global);
+        }
+        else if (std::strcmp(global, "MINIMAP_DISP_X") == 0)
+        {
+            luaPushNumber(state, static_cast<double>(std::lround(
+                static_cast<double>(getConfig()->width) * 0.0265625)));
+            luaSetGlobal(state, global);
+        }
+        else if (std::strcmp(global, "MINIMAP_DISP_Y") == 0)
+        {
+            luaPushNumber(state, static_cast<double>(std::lround(
+                static_cast<double>(getConfig()->height) * 0.2364)));
+            luaSetGlobal(state, global);
+        }
+    }
+
+    return originalLuaGetGlobal(state, global);
+}
+
 struct SetTextureCall
 {
     void *self;
@@ -935,6 +1006,38 @@ extern "C" const char *n2GetRevision(void)
     return detectedRevision.c_str();
 }
 
+extern "C" int n2WmmtShouldBlit(void)
+{
+    if (!n2IsWanganTitle())
+        return 1;
+
+    // Read the WMMT frame-ready flag.
+    static void **graphicsSlot = nullptr;
+    static bool lookedUp = false;
+    if (!lookedUp)
+    {
+        graphicsSlot = reinterpret_cast<void **>(n2ResolveSymbol(
+            "_ZN11teSingletonI10clGraphicsE11sm_instanceE"));
+        lookedUp = true;
+    }
+
+    void *graphics = graphicsSlot ? *graphicsSlot : nullptr;
+    if (!graphics)
+        return 1;
+
+    const uint8_t *state = static_cast<const uint8_t *>(graphics);
+    if (detectedGame == N2_GAME_WMMT3)
+        return *reinterpret_cast<const uint16_t *>(state + 0x48) != 0 ? 1 : 0;
+
+    if (*reinterpret_cast<const uint16_t *>(state + 0x54) != 0)
+        return 1;
+
+    const uint32_t *buffer = *reinterpret_cast<const uint32_t *const *>(state + 0x0c);
+    if (!buffer)
+        buffer = *reinterpret_cast<const uint32_t *const *>(state + 0x08);
+    return buffer && buffer[1] == 0 ? 1 : 0;
+}
+
 extern "C" int n2InstallAdmHooks(void)
 {
     static bool installed = false;
@@ -971,6 +1074,54 @@ extern "C" int n2InstallAdmHooks(void)
     installed = true;
     log_info("Namco N2: display manager entry points redirected to the loader's GL context");
     return 1;
+}
+
+extern "C" int n2InstallLateTextureHooks(void)
+{
+    static bool installed = false;
+    if (installed)
+        return 1;
+    int hooks = 0;
+    hooks += n2HookSymbolWithOriginal(
+        "_ZN24clAlchemyTextureAccessor19createTextureHandleEii",
+        reinterpret_cast<void *>(createTextureHandle),
+        reinterpret_cast<void **>(&originalCreateTextureHandle));
+    hooks += n2HookSymbolWithOriginal(
+        "_ZN3Gap3Gfx19igAGLEVisualContext10setTextureEii",
+        reinterpret_cast<void *>(setTexture),
+        reinterpret_cast<void **>(&originalSetTexture));
+    hooks += n2HookSymbolWithOriginal(
+        "_ZN3Gap3Gfx19igAGLEVisualContext16setTextureRegionEiiiiiiPNS0_7igImageE",
+        reinterpret_cast<void *>(setTextureRegion),
+        reinterpret_cast<void **>(&originalSetTextureRegion));
+    hooks += n2HookSymbolWithOriginal(
+        "_ZN3Gap3Gfx19igAGLEVisualContext11setViewportEiiiiff",
+        reinterpret_cast<void *>(setViewport),
+        reinterpret_cast<void **>(&originalSetViewport));
+
+    // Install resolution hooks before rendering.
+    if (getConfig()->width != 640 || getConfig()->height != 480)
+    {
+        hooks += n2HookSymbolWithOriginal(
+            "_ZN3Gap4Math11igMatrix44f32makePerspectiveProjectionRadiansEfffff",
+            reinterpret_cast<void *>(makePerspectiveProjection),
+            reinterpret_cast<void **>(&originalMakePerspectiveProjection));
+
+        hooks += n2HookSymbolWithOriginal(
+            "lua_getglobal",
+            reinterpret_cast<void *>(luaGetGlobal),
+            reinterpret_cast<void **>(&originalLuaGetGlobal));
+        luaSetGlobal = reinterpret_cast<LuaSetGlobal>(n2ResolveSymbol("lua_setglobal"));
+        luaPushNumber = reinterpret_cast<LuaPushNumber>(n2ResolveSymbol("lua_pushnumber"));
+    }
+
+    if (!n2ArmHooks())
+        return 0;
+
+    installed = true;
+    log_info("Namco N2: late render hooks installed (%d hooks, detected=%d)",
+             hooks, n2IsDetected());
+    return hooks > 0 ? 1 : 0;
 }
 
 

@@ -55,6 +55,7 @@ void initBlitting()
 
 void blitSetWidthandHeightSize()
 {
+    // Use the configured render size.
     blitWidth = gWidth;
     blitHeight = gHeight;
 }
@@ -115,9 +116,13 @@ void blitStretch()
         }
         SDL_GetWindowSizeInPixels(g_SdlWindow, &drawableW, &drawableH);
 
+        // Always copy from the default framebuffer.
+        GLint sourceViewport[4] = {0, 0, blitWidth, blitHeight};
+
         // SAVE STATE
         GLint oldScissorTest = 0;
         GLint oldScissorBox[4];
+        GLint oldViewport[4];
         GLboolean oldColorMask[4];
         GLint oldDrawFbo = 0, oldReadFbo = 0;
         GLfloat oldClearColor[4];
@@ -127,12 +132,18 @@ void blitStretch()
         CHECK_GL("glGetIntegerv GL_SCISSOR_TEST");
         glad_glGetIntegerv(GL_SCISSOR_BOX, oldScissorBox);
         CHECK_GL("glGetIntegerv GL_SCISSOR_BOX");
+        glad_glGetIntegerv(GL_VIEWPORT, oldViewport);
+        CHECK_GL("glGetIntegerv GL_VIEWPORT");
         glad_glGetBooleanv(GL_COLOR_WRITEMASK, oldColorMask);
         CHECK_GL("glGetBooleanv GL_COLOR_WRITEMASK");
         glad_glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &oldDrawFbo);
         CHECK_GL("glGetIntegerv GL_DRAW_FRAMEBUFFER_BINDING");
         glad_glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &oldReadFbo);
         CHECK_GL("glGetIntegerv GL_READ_FRAMEBUFFER_BINDING");
+        glad_glGetIntegerv(GL_READ_BUFFER, &oldReadBuffer);
+        CHECK_GL("glGetIntegerv GL_READ_BUFFER");
+        glad_glGetIntegerv(GL_DRAW_BUFFER, &oldDrawBuffer);
+        CHECK_GL("glGetIntegerv GL_DRAW_BUFFER");
         glad_glGetFloatv(GL_COLOR_CLEAR_VALUE, oldClearColor);
         CHECK_GL("glGetFloatv GL_COLOR_CLEAR_VALUE");
 
@@ -155,18 +166,23 @@ void blitStretch()
         // Bind both to fboId first (workaround for some drivers rejecting GL_READ_FRAMEBUFFER)
         glad_glBindFramebuffer(GL_FRAMEBUFFER, fboId);
         CHECK_GL("bind GL_FRAMEBUFFER fboId first blit");
-        glad_glBindFramebuffer(GL_READ_FRAMEBUFFER, 0); // Assuming game drew to default FBO
+        // Copy the completed frame from the default framebuffer.
+        glad_glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
         CHECK_GL("bind GL_READ_FRAMEBUFFER 0 first blit");
 
         glad_glReadBuffer(GL_BACK);
         CHECK_GL("readbuffer GL_BACK");
 
-        glad_glBlitFramebuffer(0, 0, blitWidth, blitHeight, 0, 0, blitWidth, blitHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        glad_glBlitFramebuffer(sourceViewport[0], sourceViewport[1],
+                               sourceViewport[0] + sourceViewport[2], sourceViewport[1] + sourceViewport[3],
+                               0, 0, blitWidth, blitHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
         CHECK_GL("first blit to fboId");
 
         float gameAspect = (float)blitWidth / (float)blitHeight;
         float windowAspect = (float)drawableW / (float)drawableH;
 
+        dest.X = 0;
+        dest.Y = 0;
         dest.W = drawableW;
         dest.H = drawableH;
 
@@ -230,5 +246,6 @@ void blitStretch()
         }
 
         glad_glClearColor(oldClearColor[0], oldClearColor[1], oldClearColor[2], oldClearColor[3]);
+        glad_glViewport(oldViewport[0], oldViewport[1], oldViewport[2], oldViewport[3]);
     }
 }

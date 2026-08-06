@@ -21,6 +21,7 @@
 #include "fpsLimiter.h"
 #include "../input/sdlInput.h"
 #include "../hardware/common/jvs.h"
+#include "../hardware/namco/n2/n2.h"
 #if defined(_WIN32) || defined(__MINGW32__)
 #include "../hardware/common/cardControl.h"
 #endif
@@ -122,12 +123,8 @@ void keepWindowResponsive(void)
         return;
 
     g_lastPumpTicks = now;
-    /*
-     * Pumped but deliberately not dispatched: this runs in the middle of the
-     * game's own loading, and acting on a fullscreen toggle or a quit there is
-     * a good deal riskier than letting the events wait for the next pollEvents.
-     */
-    SDL_PumpEvents();
+    /* Drain queued SDL callbacks while loading. */
+    pollEvents();
 }
 
 void startSDL()
@@ -166,7 +163,8 @@ void startSDL()
         SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 1);
     }
 
-    uint32_t windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN;
+    // Use a pixel-dense backbuffer for custom resolutions.
+    uint32_t windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN;
 
     g_SdlWindow = SDL_CreateWindow(getGameName(), gWidth, gHeight, windowFlags);
 
@@ -328,6 +326,10 @@ int presentSDLFrame(const SDLFramePresentOptions *options)
     SDL_Window *window = getSDLWindow();
     if (!window)
         return 0;
+
+    // Present only completed WMMT frames.
+    if (gGrp == GROUP_WMMT3 && n2WmmtShouldBlit())
+        blitStretch();
 
     SDL_GL_SwapWindow(window);
 

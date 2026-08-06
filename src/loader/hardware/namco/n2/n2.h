@@ -26,6 +26,7 @@ int n2DetectGame(const char *elfPath);
 int n2IsDetected(void);
 int n2InstallHooks(void);
 int n2InstallAdmHooks(void);
+int n2InstallLateTextureHooks(void);
 int n2InitializeGraphics(void);
 int n2HandleSystemCommand(const char *command);
 // Handles N2-specific host hotkeys before SDL 1.2 passes them to the game.
@@ -57,6 +58,9 @@ const char *n2GetGameTitle(void);
 const char *n2GetGameShortTitle(void);
 const char *n2GetGameId(void);
 const char *n2GetRevision(void);
+
+// Decide whether WMMT should copy the frame.
+int n2WmmtShouldBlit(void);
 
 #ifdef __cplusplus
 }
