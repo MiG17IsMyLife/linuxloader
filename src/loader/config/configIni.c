@@ -39,6 +39,16 @@ int createDefaultIni(const char *filePath)
     fprintf(file, "YACARDEMU_DIAGNOSTICS = %s\n\n",
             defaults.namcoN2.card.diagnostics ? "true" : "false");
 
+    fprintf(file, "NETWORK_ENABLED = %s\n", defaults.namcoN2.network.enabled ? "true" : "false");
+    fprintf(file, "NETWORK_INTERFACE = \"%s\"\n", defaults.namcoN2.network.interfaceName);
+    fprintf(file, "NETWORK_BIND_ADDRESS = \"%s\"\n", defaults.namcoN2.network.bindAddress);
+    fprintf(file, "NETWORK_BROADCAST_ADDRESS = \"%s\"\n",
+            defaults.namcoN2.network.broadcastAddress);
+    fprintf(file, "NETWORK_ALLOW_BROADCAST = %s\n",
+            defaults.namcoN2.network.allowBroadcast ? "true" : "false");
+    fprintf(file, "NETWORK_REWRITE_BROADCAST = %s\n\n",
+            defaults.namcoN2.network.rewriteBroadcast ? "true" : "false");
+
     fprintf(file, "# Advanced cabinet calibration; defaults match the emulated N2 board.\n");
     fprintf(file, "STEERING_RAW_MIN = %d\nSTEERING_RAW_MAX = %d\n",
             defaults.namcoN2.steering.minimum, defaults.namcoN2.steering.maximum);

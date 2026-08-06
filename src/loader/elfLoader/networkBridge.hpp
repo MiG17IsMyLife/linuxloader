@@ -26,6 +26,21 @@ struct LinuxMsghdr
     int32_t flags;
 };
 
+#pragma pack(push, 4)
+struct LinuxAddrinfo
+{
+    int32_t aiFlags;
+    int32_t aiFamily;
+    int32_t aiSocktype;
+    int32_t aiProtocol;
+    uint32_t aiAddrlen;
+    struct sockaddr *aiAddr;
+    char *aiCanonname;
+    LinuxAddrinfo *aiNext;
+};
+#pragma pack(pop)
+static_assert(sizeof(LinuxAddrinfo) == 32, "i386 struct addrinfo layout mismatch");
+
 namespace NetworkBridge
 {
     void initBridges();
@@ -68,6 +83,11 @@ namespace NetworkBridge
     extern "C" void *bridgeGethostbyname(const char *name);
     extern "C" void *bridgeGethostbyaddr(const void *addr, int len, int type);
     extern "C" void *bridgeGetservbyname(const char *name, const char *proto);
+    extern "C" int bridgeGetaddrinfo(const char *node, const char *service,
+                                      const LinuxAddrinfo *hints, LinuxAddrinfo **result);
+    extern "C" void bridgeFreeaddrinfo(LinuxAddrinfo *result);
+    extern "C" unsigned int bridgeIf_nametoindex(const char *name);
+    extern "C" char *bridgeIf_indextoname(unsigned int index, char *name);
     extern "C" uint16_t bridgeNtohs(uint16_t netshort);
     extern "C" uint16_t bridgeHtons(uint16_t hostshort);
     extern "C" uint32_t bridgeNtohl(uint32_t netlong);

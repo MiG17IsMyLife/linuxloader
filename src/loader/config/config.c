@@ -156,6 +156,12 @@ void setDefaultValues(EmulatorConfig *cfg)
     strcpy(cfg->namcoN2.card.pipeName, "\\\\.\\pipe\\YACardEmu");
     strcpy(cfg->namcoN2.card.apiHost, "127.0.0.1");
     strcpy(cfg->namcoN2.card.cardName, "");
+    cfg->namcoN2.network.enabled = 1;
+    strcpy(cfg->namcoN2.network.interfaceName, "");
+    strcpy(cfg->namcoN2.network.bindAddress, "");
+    strcpy(cfg->namcoN2.network.broadcastAddress, "");
+    cfg->namcoN2.network.allowBroadcast = 1;
+    cfg->namcoN2.network.rewriteBroadcast = 0;
     cfg->emulateRideboard = 0;
     cfg->emulateDriveboard = 0;
     cfg->emulateMotionboard = 0;
@@ -407,6 +413,20 @@ void applyIniConfig(EmulatorConfig *config, const IniConfig *ini)
               config->namcoN2.card.cardName, sizeof(config->namcoN2.card.cardName));
     config->namcoN2.card.diagnostics =
         getInt(ini, "NamcoN2", "YACARDEMU_DIAGNOSTICS", config->namcoN2.card.diagnostics);
+
+    config->namcoN2.network.enabled =
+        getInt(ini, "NamcoN2", "NETWORK_ENABLED", config->namcoN2.network.enabled);
+    getString(ini, "NamcoN2", "NETWORK_INTERFACE", config->namcoN2.network.interfaceName,
+              sizeof(config->namcoN2.network.interfaceName));
+    getString(ini, "NamcoN2", "NETWORK_BIND_ADDRESS", config->namcoN2.network.bindAddress,
+              sizeof(config->namcoN2.network.bindAddress));
+    getString(ini, "NamcoN2", "NETWORK_BROADCAST_ADDRESS",
+              config->namcoN2.network.broadcastAddress,
+              sizeof(config->namcoN2.network.broadcastAddress));
+    config->namcoN2.network.allowBroadcast = getInt(
+        ini, "NamcoN2", "NETWORK_ALLOW_BROADCAST", config->namcoN2.network.allowBroadcast);
+    config->namcoN2.network.rewriteBroadcast = getInt(
+        ini, "NamcoN2", "NETWORK_REWRITE_BROADCAST", config->namcoN2.network.rewriteBroadcast);
 
     // [Display]
     config->width = getInt(ini, "Display", "WIDTH", config->width);

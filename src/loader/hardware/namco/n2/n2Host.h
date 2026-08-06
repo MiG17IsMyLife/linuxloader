@@ -18,6 +18,9 @@ extern "C" {
 int n2HostNetworkInterface(int *interfaceIndex, unsigned char address[4],
                            unsigned char mask[4], unsigned char mac[6], int *link);
 
+/* Accept the cabinet's network setup commands without changing Windows. */
+int n2HostNetworkCommand(const char *command);
+
 /*
  * What etc/usbsize.pl reports: the total size of the volume holding the
  * working directory, in 1K blocks (the second column of "busybox df").

@@ -280,6 +280,16 @@ typedef struct
 
 typedef struct
 {
+    int enabled;
+    char interfaceName[128];
+    char bindAddress[16];
+    char broadcastAddress[16];
+    int allowBroadcast;
+    int rewriteBroadcast;
+} NamcoN2NetworkConfig;
+
+typedef struct
+{
     char dongleId[13];
     char dongleId2[13];
     int debugMode;
@@ -322,9 +332,10 @@ typedef struct
      * ones clSystemN2::initSystemN2() asks for; lowering one makes the game
      * claim fewer of that function, which is only useful for working out what
      * a cabinet actually needs.
-     */
+    */
     NamcoN2JvsConfig jvs;
     NamcoN2CardConfig card;
+    NamcoN2NetworkConfig network;
 } NamcoN2Config;
 
 typedef struct

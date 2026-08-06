@@ -5,6 +5,9 @@
 #include "networkBridge.hpp"
 #include "symbolResolver.hpp"
 #include "../log/log.h"
+#include "../config/config.h"
+#include "../hardware/namco/n2/n2.h"
+#include "../hardware/namco/n2/n2Host.h"
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -15,6 +18,9 @@
 #include <cstdint>
 #include <cstring>
 #include <atomic>
+#include <cstdlib>
+#include <new>
+#include <unordered_set>
 #include <vector>
 
 static std::mutex g_net_mutex;
@@ -34,6 +40,94 @@ struct SocketTable
     }
 };
 static SocketTable g_socketTable;
+
+namespace
+{
+const NamcoN2NetworkConfig *wmmtNetworkConfig()
+{
+    EmulatorConfig *config = getConfig();
+    return config ? &config->namcoN2.network : nullptr;
+}
+
+bool parseIPv4(const char *text, in_addr *address)
+{
+    return text && address && InetPtonA(AF_INET, text, address) == 1;
+}
+
+bool getHostIPv4(in_addr *address)
+{
+    if (!address)
+        return false;
+
+    int interfaceIndex = 0;
+    int link = 0;
+    unsigned char bytes[4] = {};
+    unsigned char mask[4] = {};
+    unsigned char mac[6] = {};
+    if (!n2HostNetworkInterface(&interfaceIndex, bytes, mask, mac, &link))
+        return false;
+
+    std::memcpy(&address->s_addr, bytes, sizeof(bytes));
+    return true;
+}
+
+bool makeConfiguredBindAddress(const sockaddr *source, int sourceLength,
+                               sockaddr_storage &destination, int &destinationLength)
+{
+    const NamcoN2NetworkConfig *config = wmmtNetworkConfig();
+    if (!config || !config->enabled || !source ||
+        sourceLength < static_cast<int>(sizeof(sockaddr_in)) || source->sa_family != AF_INET)
+        return false;
+
+    in_addr address = {};
+    if (config->bindAddress[0] != '\0')
+    {
+        if (!parseIPv4(config->bindAddress, &address))
+            return false;
+    }
+    else
+    {
+        const sockaddr_in *input = reinterpret_cast<const sockaddr_in *>(source);
+        if (input->sin_addr.s_addr == htonl(INADDR_ANY))
+            return false;
+        if (!n2IsWanganTitle() || !getHostIPv4(&address))
+            return false;
+    }
+
+    std::memset(&destination, 0, sizeof(destination));
+    std::memcpy(&destination, source,
+                static_cast<size_t>(std::min(sourceLength, static_cast<int>(sizeof(destination)))));
+    reinterpret_cast<sockaddr_in *>(&destination)->sin_addr = address;
+    destinationLength = sourceLength;
+    return true;
+}
+
+bool makeConfiguredBroadcastAddress(const sockaddr *source, int sourceLength,
+                                    sockaddr_storage &destination, int &destinationLength)
+{
+    const NamcoN2NetworkConfig *config = wmmtNetworkConfig();
+    if (!config || !config->enabled || !config->rewriteBroadcast ||
+        config->broadcastAddress[0] == '\0' || !source ||
+        sourceLength < static_cast<int>(sizeof(sockaddr_in)) || source->sa_family != AF_INET)
+        return false;
+
+    const sockaddr_in *input = reinterpret_cast<const sockaddr_in *>(source);
+    const uint32_t hostAddress = ntohl(input->sin_addr.s_addr);
+    if (hostAddress != INADDR_BROADCAST && (hostAddress & 0xFFu) != 0xFFu)
+        return false;
+
+    in_addr address = {};
+    if (!parseIPv4(config->broadcastAddress, &address))
+        return false;
+
+    std::memset(&destination, 0, sizeof(destination));
+    std::memcpy(&destination, source,
+                static_cast<size_t>(std::min(sourceLength, static_cast<int>(sizeof(destination)))));
+    reinterpret_cast<sockaddr_in *>(&destination)->sin_addr = address;
+    destinationLength = sourceLength;
+    return true;
+}
+} // namespace
 
 #define MAP(name, func) SymbolResolver::GetInstance().RegisterVTable(name, reinterpret_cast<void *>(func))
 
@@ -317,6 +411,10 @@ namespace NetworkBridge
         MAP("gethostbyaddr", bridgeGethostbyaddr);
         MAP("gethostname", bridgeGethostname);
         MAP("getservbyname", bridgeGetservbyname);
+        MAP("getaddrinfo", bridgeGetaddrinfo);
+        MAP("freeaddrinfo", bridgeFreeaddrinfo);
+        MAP("if_nametoindex", bridgeIf_nametoindex);
+        MAP("if_indextoname", bridgeIf_indextoname);
     }
 
     unsigned long bridgeInet_addr(const char *cp)
@@ -415,6 +513,16 @@ extern "C" SOCKET bridgeSocket(int af, int type, int protocol)
         return (SOCKET)-1;
     }
 
+    const NamcoN2NetworkConfig *config = wmmtNetworkConfig();
+    if (config && config->enabled && config->allowBroadcast && type == SOCK_DGRAM)
+    {
+        const int enabled = 1;
+        setsockopt(s, SOL_SOCKET, SO_BROADCAST,
+                   reinterpret_cast<const char *>(&enabled), sizeof(enabled));
+        setsockopt(s, SOL_SOCKET, SO_REUSEADDR,
+                   reinterpret_cast<const char *>(&enabled), sizeof(enabled));
+    }
+
     const int descriptor = NetworkBridge::registerSocket(s);
     if (descriptor < 0)
     {
@@ -434,6 +542,7 @@ extern "C" int bridgeConnect(SOCKET s, const struct sockaddr *name, int namelen)
     if (ret == SOCKET_ERROR)
     {
         errno = mapWSAErrorToErrno(WSAGetLastError());
+        log_debug("Network bridge: connect failed WSAError=%d errno=%d", WSAGetLastError(), errno);
     }
     log_trace(">>> connect EXIT: returning %d (WSAError=%d)", ret, ret < 0 ? WSAGetLastError() : 0);
     return ret;
@@ -443,11 +552,19 @@ extern "C" int bridgeBind(SOCKET s, const struct sockaddr *name, int namelen)
 {
     s = NetworkBridge::hostSocket(static_cast<int>(s));
     log_trace(">>> bind called: socket=%lld", (long long)s);
-    int ret = bind(s, name, namelen);
+    sockaddr_storage configuredAddress = {};
+    int configuredLength = namelen;
+    const bool rewritten = makeConfiguredBindAddress(name, namelen, configuredAddress, configuredLength);
+    const sockaddr *bindAddress = rewritten ? reinterpret_cast<const sockaddr *>(&configuredAddress) : name;
+    int ret = bind(s, bindAddress, configuredLength);
     if (ret == SOCKET_ERROR)
     {
         errno = mapWSAErrorToErrno(WSAGetLastError());
+        log_debug("Network bridge: bind failed WSAError=%d errno=%d rewritten=%d",
+                  WSAGetLastError(), errno, rewritten ? 1 : 0);
     }
+    else if (rewritten)
+        log_debug("Network bridge: bind address mapped to the selected host adapter");
     log_trace(">>> bind EXIT: returning %d", ret);
     return ret;
 }
@@ -550,7 +667,11 @@ extern "C" int bridgeSendto(SOCKET s, const char *buf, int len, int flags, const
     s = NetworkBridge::hostSocket(static_cast<int>(s));
     log_trace(">>> sendto called: socket=%lld, len=%d", (long long)s, len);
     flags &= ~(0x4000 | 0x40);
-    int ret = sendto(s, buf, len, flags, to, tolen);
+    sockaddr_storage configuredAddress = {};
+    int configuredLength = tolen;
+    const bool rewritten = makeConfiguredBroadcastAddress(to, tolen, configuredAddress, configuredLength);
+    const sockaddr *destination = rewritten ? reinterpret_cast<const sockaddr *>(&configuredAddress) : to;
+    int ret = sendto(s, buf, len, flags, destination, configuredLength);
     if (ret == SOCKET_ERROR)
     {
         errno = mapWSAErrorToErrno(WSAGetLastError());
@@ -612,11 +733,18 @@ extern "C" int bridgeSendmsg(SOCKET s, const LinuxMsghdr *message, int flags)
 
     DWORD sent = 0;
     const DWORD wsaFlags = static_cast<DWORD>(translateMessageFlags(flags));
+    sockaddr_storage configuredAddress = {};
+    int configuredLength = message->nameLength;
+    const bool rewritten = makeConfiguredBroadcastAddress(
+        static_cast<const struct sockaddr *>(message->name), static_cast<int>(message->nameLength),
+        configuredAddress, configuredLength);
+    const struct sockaddr *destination = rewritten
+                                             ? reinterpret_cast<const struct sockaddr *>(&configuredAddress)
+                                             : static_cast<const struct sockaddr *>(message->name);
     int ret;
     if (message->name && message->nameLength)
         ret = WSASendTo(s, buffers.data(), static_cast<DWORD>(buffers.size()), &sent, wsaFlags,
-                        static_cast<const struct sockaddr *>(message->name),
-                        static_cast<int>(message->nameLength), nullptr, nullptr);
+                        destination, configuredLength, nullptr, nullptr);
     else
         ret = WSASend(s, buffers.data(), static_cast<DWORD>(buffers.size()), &sent, wsaFlags,
                       nullptr, nullptr);
@@ -775,6 +903,19 @@ struct LinuxTimeval
     int32_t seconds;
     int32_t microseconds;
 };
+
+bool useHostMulticastInterface(in_addr &interfaceAddress)
+{
+    if (!n2IsWanganTitle())
+        return false;
+
+    in_addr hostAddress = {};
+    if (!getHostIPv4(&hostAddress))
+        return false;
+
+    interfaceAddress = hostAddress;
+    return true;
+}
 } // namespace
 
 extern "C" int bridgeSetsockopt(SOCKET s, int level, int optname, const char *optval, int optlen)
@@ -801,6 +942,25 @@ extern "C" int bridgeSetsockopt(SOCKET s, int level, int optname, const char *op
         host.l_linger = static_cast<u_short>(guest->seconds);
         ret = setsockopt(s, level, optname, reinterpret_cast<const char *>(&host), sizeof(host));
     }
+    else if (guestLevel == linuxIpprotoIp &&
+             (guestOption == 35 || guestOption == 36) &&
+             optval && optlen >= static_cast<int>(sizeof(in_addr) * 2))
+    {
+        struct ip_mreq host = {};
+        std::memcpy(&host.imr_multiaddr, optval, sizeof(host.imr_multiaddr));
+        std::memcpy(&host.imr_interface, optval + sizeof(host.imr_multiaddr),
+                    sizeof(host.imr_interface));
+        useHostMulticastInterface(host.imr_interface);
+        ret = setsockopt(s, level, optname, reinterpret_cast<const char *>(&host), sizeof(host));
+    }
+    else if (guestLevel == linuxIpprotoIp && guestOption == 32 &&
+             optval && optlen >= static_cast<int>(sizeof(in_addr)))
+    {
+        in_addr host = {};
+        std::memcpy(&host, optval, sizeof(host));
+        useHostMulticastInterface(host);
+        ret = setsockopt(s, level, optname, reinterpret_cast<const char *>(&host), sizeof(host));
+    }
     else if (guestLevel == linuxSolSocket &&
              (guestOption == linuxSoRcvtimeo || guestOption == linuxSoSndtimeo) &&
              optval && optlen >= static_cast<int>(sizeof(LinuxTimeval)))
@@ -818,7 +978,9 @@ extern "C" int bridgeSetsockopt(SOCKET s, int level, int optname, const char *op
     }
 
     if (ret == SOCKET_ERROR)
+    {
         errno = mapWSAErrorToErrno(WSAGetLastError());
+    }
     return ret;
 }
 
@@ -1225,6 +1387,153 @@ extern "C" int bridgeSocketPair(int descriptors[2])
     descriptors[0] = readEnd;
     descriptors[1] = writeEnd;
     return 0;
+}
+
+namespace
+{
+struct GuestAddrinfoNode
+{
+    LinuxAddrinfo info = {};
+    sockaddr_storage address = {};
+    char canonicalName[NI_MAXHOST] = {};
+};
+
+std::mutex g_addrinfo_mutex;
+std::unordered_set<LinuxAddrinfo *> g_addrinfo_nodes;
+
+void freeGuestAddrinfoChain(LinuxAddrinfo *result)
+{
+    std::lock_guard<std::mutex> lock(g_addrinfo_mutex);
+    while (result)
+    {
+        auto found = g_addrinfo_nodes.find(result);
+        if (found == g_addrinfo_nodes.end())
+        {
+            log_warn("Network bridge: freeaddrinfo received an unknown record");
+            return;
+        }
+
+        LinuxAddrinfo *next = result->aiNext;
+        g_addrinfo_nodes.erase(found);
+        delete reinterpret_cast<GuestAddrinfoNode *>(result);
+        result = next;
+    }
+}
+} // namespace
+
+extern "C" int NetworkBridge::bridgeGetaddrinfo(const char *node, const char *service,
+                                                 const LinuxAddrinfo *hints, LinuxAddrinfo **result)
+{
+    if (!result)
+        return EAI_FAIL;
+    *result = nullptr;
+
+    struct addrinfo hostHints = {};
+    struct addrinfo *hostHintsPointer = nullptr;
+    if (hints)
+    {
+        hostHints.ai_flags = hints->aiFlags;
+        hostHints.ai_family = hints->aiFamily;
+        hostHints.ai_socktype = hints->aiSocktype;
+        hostHints.ai_protocol = hints->aiProtocol;
+        hostHintsPointer = &hostHints;
+    }
+
+    struct addrinfo *hostResult = nullptr;
+    const int error = getaddrinfo(node, service, hostHintsPointer, &hostResult);
+    if (error != 0)
+        return error;
+
+    LinuxAddrinfo *first = nullptr;
+    LinuxAddrinfo *previous = nullptr;
+    for (const struct addrinfo *host = hostResult; host; host = host->ai_next)
+    {
+        GuestAddrinfoNode *guest = new (std::nothrow) GuestAddrinfoNode();
+        if (!guest)
+        {
+            freeaddrinfo(hostResult);
+            freeGuestAddrinfoChain(first);
+            return EAI_MEMORY;
+        }
+
+        guest->info.aiFlags = host->ai_flags;
+        guest->info.aiFamily = host->ai_family;
+        guest->info.aiSocktype = host->ai_socktype;
+        guest->info.aiProtocol = host->ai_protocol;
+        guest->info.aiAddrlen = static_cast<uint32_t>(std::min<size_t>(
+            host->ai_addrlen, sizeof(guest->address)));
+        if (host->ai_addr && guest->info.aiAddrlen)
+        {
+            std::memcpy(&guest->address, host->ai_addr, guest->info.aiAddrlen);
+            guest->info.aiAddr = reinterpret_cast<struct sockaddr *>(&guest->address);
+        }
+        if (host->ai_canonname)
+        {
+            std::strncpy(guest->canonicalName, host->ai_canonname,
+                         sizeof(guest->canonicalName) - 1);
+            guest->info.aiCanonname = guest->canonicalName;
+        }
+
+        if (!first)
+            first = &guest->info;
+        if (previous)
+            previous->aiNext = &guest->info;
+        previous = &guest->info;
+
+        std::lock_guard<std::mutex> lock(g_addrinfo_mutex);
+        g_addrinfo_nodes.insert(&guest->info);
+    }
+
+    freeaddrinfo(hostResult);
+    *result = first;
+    return 0;
+}
+
+extern "C" void NetworkBridge::bridgeFreeaddrinfo(LinuxAddrinfo *result)
+{
+    freeGuestAddrinfoChain(result);
+}
+
+extern "C" unsigned int NetworkBridge::bridgeIf_nametoindex(const char *name)
+{
+    if (!name)
+    {
+        errno = EINVAL;
+        return 0;
+    }
+
+    if (_stricmp(name, "eth0") == 0)
+    {
+        in_addr address = {};
+        if (!getHostIPv4(&address))
+        {
+            errno = ENODEV;
+            return 0;
+        }
+        log_debug("Network bridge: if_nametoindex(%s) -> 2", name);
+        return 2;
+    }
+    if (_stricmp(name, "lo") == 0)
+    {
+        log_debug("Network bridge: if_nametoindex(%s) -> 1", name);
+        return 1;
+    }
+
+    errno = ENODEV;
+    return 0;
+}
+
+extern "C" char *NetworkBridge::bridgeIf_indextoname(unsigned int index, char *name)
+{
+    if (!name || (index != 0 && index != 1 && index != 2))
+    {
+        errno = EINVAL;
+        return nullptr;
+    }
+
+    std::strcpy(name, index == 1 ? "lo" : "eth0");
+    log_debug("Network bridge: if_indextoname(%u) -> %s", index, name);
+    return name;
 }
 
 #pragma pack(push, 4)

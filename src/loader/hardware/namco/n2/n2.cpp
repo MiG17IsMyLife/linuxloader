@@ -1442,8 +1442,7 @@ extern "C" int n2HandleSystemCommand(const char *command)
         if (std::strncmp(privileged, "ifconfig ", 9) == 0 ||
             std::strncmp(privileged, "route ", 6) == 0)
         {
-            log_info("Namco N2: leaving host networking untouched for: %s", command);
-            return 0;
+            return n2HostNetworkCommand(command);
         }
 
         if (std::strncmp(privileged, "mkdir -p ", 9) == 0)
