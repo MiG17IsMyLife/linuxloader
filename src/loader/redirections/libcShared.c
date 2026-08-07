@@ -260,6 +260,10 @@ void *sharedDlopen(const char *filename, int flags)
     if (!filename)
         return (void *)-1; // RTLD_DEFAULT handle
 
+    if (getConfig()->platform == ARCADE_PLATFORM_NAMCO_ES1 &&
+        es1AudioDlopen(filename, &handle))
+        return handle;
+
     bridgeLoadNeededLibrary(filename);
 
     handle = bridgeLibraryHandle(filename);
@@ -272,6 +276,10 @@ void *sharedDlopen(const char *filename, int flags)
 void *sharedDlsym(void *handle, const char *symbol)
 {
 #ifdef _WIN32
+    void *es1Function = es1AudioDlsym(handle, symbol);
+    if (es1Function)
+        return es1Function;
+
     void *func = bridgeResolveSymbolInModule(handle, symbol);
     if (func)
         return func;
@@ -285,6 +293,8 @@ void *sharedDlsym(void *handle, const char *symbol)
 int sharedDlclose(void *handle)
 {
 #ifdef _WIN32
+    if (es1AudioDlclose(handle) == 0)
+        return 0;
     return 0;
 #else
     return dlclose(handle);

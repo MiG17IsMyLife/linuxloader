@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <sys/types.h>
 
 namespace VirtualDeviceRegistry
 {
@@ -15,6 +16,8 @@ namespace VirtualDeviceRegistry
         int (*write)(int fd, const void *buffer, size_t count);
         int (*close)(int fd);
         int (*ioctl)(int fd, unsigned long request, void *argument);
+        void *(*map)(int fd, void *address, size_t length, int protection,
+                     int flags, off_t offset);
     };
 
     struct OpenResult
@@ -26,5 +29,7 @@ namespace VirtualDeviceRegistry
     bool registerDevice(const Device &device);
     OpenResult open(const char *path, int flags);
     const Device *find(int fd);
+    void *map(int fd, void *address, size_t length, int protection,
+              int flags, off_t offset);
     void clear(void);
 }

@@ -7,6 +7,7 @@
 #include "gccBridge.hpp"
 #include "networkBridge.hpp"
 #include "symbolResolver.hpp"
+#include "virtualDeviceRegistry.hpp"
 #include "../platform/platformBackend.h"
 #include "../config/config.h"
 #include "../graphics/sdlCalls.h"
@@ -875,6 +876,13 @@ namespace LibcBridge
     int bridgeGettimeofday(struct timeval *tv, void *tz)
     {
         log_trace("Intercepted gettimeofday");
+        /*
+         * clKickback's power/self-check waits poll cabinet time from the
+         * guest main thread instead of sleeping.  Keep the SDL/Win32 queue
+         * alive there too, otherwise Windows marks the test window hung and
+         * the TEST key can never be delivered to the JVS state.
+         */
+        keepWindowResponsive();
         if (tv)
         {
             const unsigned long long t = cabinetClockMicroseconds();
@@ -992,6 +1000,7 @@ namespace LibcBridge
     int bridgeClockGettime(int clk_id, struct timespec *tp)
     {
         log_trace("Intercepted clock_gettime");
+        keepWindowResponsive();
         if (clk_id == CLOCK_REALTIME)
         {
             const unsigned long long t = cabinetClockMicroseconds();
@@ -1544,6 +1553,12 @@ namespace LibcBridge
     void *bridgeMmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
     {
         log_trace("Intercepted mmap: addr=%p, len=%zu, prot=%d, flags=%d, fd=%d, offset=%ld", addr, length, prot, flags, fd, (long)offset);
+
+        if (fd >= 0)
+        {
+            if (void *deviceMapping = VirtualDeviceRegistry::map(fd, addr, length, prot, flags, offset))
+                return deviceMapping;
+        }
 
         if (flags & L_MAP_ANONYMOUS)
         {

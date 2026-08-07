@@ -448,6 +448,18 @@ PthreadThreadInternal* PthreadMapper::CreateThread(uint32_t* out_linux_tid) {
     return thread;
 }
 
+void PthreadMapper::RegisterThread(uint32_t linux_tid, DWORD win_tid) {
+    AcquireSRWLockExclusive(&s_lock);
+
+    auto it = s_thread_map.find(linux_tid);
+    if (it != s_thread_map.end() && it->second) {
+        it->second->win_thread_id = win_tid;
+        s_wintid_to_linuxtid[win_tid] = linux_tid;
+    }
+
+    ReleaseSRWLockExclusive(&s_lock);
+}
+
 PthreadThreadInternal* PthreadMapper::FindThread(uint32_t linux_tid) {
     AcquireSRWLockShared(&s_lock);
     

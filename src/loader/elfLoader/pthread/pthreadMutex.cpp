@@ -135,7 +135,11 @@ int PthreadEmu::pthreadMutexLock(void* mutex) {
     
     switch (m->type) {
         case LINUX_PTHREAD_MUTEX_NORMAL:
-            // Standard behavior - just lock
+            /* Windows critical sections are recursive, while a POSIX
+             * default mutex is not.  Do not let an accidental same-thread
+             * relock turn a protected callback into a re-entrant operation. */
+            while (m->owner_thread == current_thread && m->lock_count > 0)
+                Sleep(1);
             EnterCriticalSection(&m->cs);
             m->owner_thread = current_thread;
             m->lock_count = 1;

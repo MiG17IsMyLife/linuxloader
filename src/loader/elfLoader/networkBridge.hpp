@@ -96,6 +96,8 @@ namespace NetworkBridge
     extern "C" int bridgePoll(void *fds, int nfds, int timeout);
     extern "C" int bridgeSocketPair(int descriptors[2]);
     bool isSocketDescriptor(int descriptor);
+    SOCKET hostSocket(int descriptor);
+    int guestDescriptor(SOCKET socket);
     int bridgeSocketRead(int descriptor, void *buffer, size_t length);
     int bridgeSocketWrite(int descriptor, const void *buffer, size_t length);
     int bridgeSocketClose(int descriptor);

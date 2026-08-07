@@ -69,7 +69,12 @@ set(PACLOADER_SOURCES
     src/loader/hardware/namco/n2/n2SteeringIo.cpp
     src/loader/hardware/namco/n2/n2VirtualDevices.cpp
     src/loader/hardware/namco/es1/es1.cpp
+    src/loader/hardware/namco/es1/es1TestModeCompat.cpp
+    src/loader/hardware/namco/es1/es1Jvs.cpp
+    src/loader/hardware/namco/es1/es1Kickback.cpp
+    src/loader/hardware/namco/es1/es1Network.cpp
     src/loader/hardware/namco/es1/es1VirtualDevices.cpp
+    src/loader/hardware/namco/es1/es1AudioCompat.cpp
 
     src/loader/input/controlIniGen.c
     src/loader/input/sdlInput.c

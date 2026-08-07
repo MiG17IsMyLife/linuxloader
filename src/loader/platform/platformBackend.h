@@ -17,6 +17,7 @@ int platformInstallLateHooks(void);
 int platformInitializeGraphics(void);
 int platformHandleSystemCommand(const char *command);
 int platformHandleHostKey(int key, uint32_t modifiers);
+int platformHandleHostKeyEvent(int key, uint32_t modifiers, int pressed);
 int platformWantsCabinetArgument(void);
 const char *platformName(void);
 void platformRegisterVirtualDevices(void);

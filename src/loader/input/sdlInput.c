@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
@@ -97,6 +98,23 @@ const struct
     const char *name;
     LogicalAction action;
 } gActionNameMap[] = {{"Test", LA_Test},
+                      {"Enter", LA_Enter},
+                      {"TestUp", LA_TestUp},
+                      {"TestDown", LA_TestDown},
+                      {"Nitro", LA_Nitro},
+                      {"3DChange", LA_3DChange},
+                      {"Keypad1", LA_Keypad1},
+                      {"Keypad2", LA_Keypad2},
+                      {"Keypad3", LA_Keypad3},
+                      {"Keypad4", LA_Keypad4},
+                      {"Keypad5", LA_Keypad5},
+                      {"Keypad6", LA_Keypad6},
+                      {"Keypad7", LA_Keypad7},
+                      {"Keypad8", LA_Keypad8},
+                      {"Keypad9", LA_Keypad9},
+                      {"KeypadStar", LA_KeypadStar},
+                      {"Keypad0", LA_Keypad0},
+                      {"KeypadHash", LA_KeypadHash},
                       {"Coin", LA_Coin},
                       {"GearUp", LA_GearUp},
                       {"GearDown", LA_GearDown},
@@ -190,6 +208,7 @@ extern const ControlBinding gDefaultCommonBindings[];
 extern const ControlBinding gDefaultDigitalBindings[];
 extern const ControlBinding gDefaultDrivingBindings[];
 extern const ControlBinding gDefaultWmmtBindings[];
+extern const ControlBinding gDefaultMaximumHeat3dBindings[];
 extern const ControlBinding gDefaultFlyingBindings[];
 extern const ControlBinding gDefaultShootingBindings[];
 extern const ControlBinding gDefaultMahjongBindings[];
@@ -198,6 +217,7 @@ extern const size_t gDefaultCommonBindingsSize;
 extern const size_t gDefaultDigitalBindingsSize;
 extern const size_t gDefaultDrivingBindingsSize;
 extern const size_t gDefaultWmmtBindingsSize;
+extern const size_t gDefaultMaximumHeat3dBindingsSize;
 extern const size_t gDefaultFlyingBindingsSize;
 extern const size_t gDefaultShootingBindingsSize;
 extern const size_t gDefaultMahjongBindingsSize;
@@ -283,6 +303,8 @@ int initSdlInput(const char *controlsPath)
         // Namco N2 reports itself as a driving game but has its own panel.
         if (gGrp == GROUP_WMMT3)
             isProfileLoaded = loadProfileFromIni(iniGetSection(ini, "WMMT"));
+        else if (gGrp == GROUP_MAXIMUM_HEAT_3D)
+            isProfileLoaded = loadProfileFromIni(iniGetSection(ini, "MaximumHeat3D"));
         else if (gameType == DRIVING)
             isProfileLoaded = loadProfileFromIni(iniGetSection(ini, "Driving"));
         else if (gameType == DIGITAL)
@@ -619,8 +641,67 @@ void remapPerGame()
          * The DRIVING default puts CardInsert on PLAYER_1 BUTTON_UP, which on
          * N2 is the shifter, so the card key would shift gears. WMMT3 reads
          * its card through /dev/ttyM2 and has no JVS card switch at all.
-         */
+        */
         gJvsMap[PLAYER_1][LA_CardInsert] = (JVSActionMapping){JVS_CALL_NONE, NONE};
+    }
+    else if (gGrp == GROUP_MAXIMUM_HEAT_3D)
+    {
+        /*
+         * Maximum Heat 3D's ES1 Jamma input is a distinct panel.
+         * clInputDeviceJamma::update() translates the player switch word into
+         * the button mask the game tests, and only these bits are translated:
+         *
+         *   SERVICE 0x4000 -> 0x020000   ENTER   0x0200 -> 0x010000
+         *   UP      0x2000 -> 0x040000   DOWN    0x1000 -> 0x080000
+         *   NITRO   0x0040 -> 0x400000   VIEW    0x0020 -> 0x200000
+         *   TEST is the system switch    -> 0x100000
+         *
+         * VIEW CHANGE is the cabinet's general "decide" button: besides the
+         * in-race camera it steps the test mode I/F INITIALIZE (STEERING &
+         * GAS) calibration, which is what writes testmode_if_initialize.bin.
+         * Without that file the game boots with a zeroed handle and accel
+         * calibration and divides by zero, pinning the wheel at full lock, so
+         * this mapping has to be right before anything else can be.
+         */
+        gJvsMap[PLAYER_1][LA_Service] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_SERVICE};
+        gJvsMap[PLAYER_1][LA_Enter] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_1};
+        gJvsMap[PLAYER_1][LA_TestUp] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_UP};
+        gJvsMap[PLAYER_1][LA_TestDown] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_DOWN};
+        gJvsMap[PLAYER_1][LA_ViewChange] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_5};
+        gJvsMap[PLAYER_1][LA_Nitro] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_4};
+
+        /*
+         * The shipped ES1 cabinet has a brake switch rather than a third
+         * potentiometer, which the game selects with STR_BRAKE_DIGITAL in
+         * data/csv/config.csv.  With it set, clInputDeviceJamma::update()
+         * ignores analogue channel 3 entirely and takes the brake from switch
+         * bit 0x0080 of the player word, so the DRIVING default of ANALOGUE_3
+         * would never be read.  A pedal is bound through the axis' digital
+         * mode to close the switch.
+         */
+        gJvsMap[PLAYER_1][LA_Brake] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_3};
+        gJvsMap[PLAYER_1][LA_Brake_Digital] = (JVSActionMapping){JVS_CALL_SWITCH, BUTTON_3};
+
+        /*
+         * 2D/3D CHANGE has no switch yet. It used to sit on BUTTON_2, which
+         * update() does not translate at all, so the binding did nothing. The
+         * remaining translated bits are BUTTON_6..BUTTON_9, which the game only
+         * ever reads as the single group 0xF000, and BUTTON_10; the test mode
+         * SWITCH TEST screen is what settles which one the panel uses.
+         */
+        gJvsMap[PLAYER_1][LA_3DChange] = (JVSActionMapping){JVS_CALL_NONE, NONE};
+        gJvsMap[PLAYER_1][LA_Keypad1] = (JVSActionMapping){JVS_CALL_KEYPAD, KEYPAD_1};
+        gJvsMap[PLAYER_1][LA_Keypad2] = (JVSActionMapping){JVS_CALL_KEYPAD, KEYPAD_2};
+        gJvsMap[PLAYER_1][LA_Keypad3] = (JVSActionMapping){JVS_CALL_KEYPAD, KEYPAD_3};
+        gJvsMap[PLAYER_1][LA_Keypad4] = (JVSActionMapping){JVS_CALL_KEYPAD, KEYPAD_4};
+        gJvsMap[PLAYER_1][LA_Keypad5] = (JVSActionMapping){JVS_CALL_KEYPAD, KEYPAD_5};
+        gJvsMap[PLAYER_1][LA_Keypad6] = (JVSActionMapping){JVS_CALL_KEYPAD, KEYPAD_6};
+        gJvsMap[PLAYER_1][LA_Keypad7] = (JVSActionMapping){JVS_CALL_KEYPAD, KEYPAD_7};
+        gJvsMap[PLAYER_1][LA_Keypad8] = (JVSActionMapping){JVS_CALL_KEYPAD, KEYPAD_8};
+        gJvsMap[PLAYER_1][LA_Keypad9] = (JVSActionMapping){JVS_CALL_KEYPAD, KEYPAD_9};
+        gJvsMap[PLAYER_1][LA_KeypadStar] = (JVSActionMapping){JVS_CALL_KEYPAD, KEYPAD_STAR};
+        gJvsMap[PLAYER_1][LA_Keypad0] = (JVSActionMapping){JVS_CALL_KEYPAD, KEYPAD_0};
+        gJvsMap[PLAYER_1][LA_KeypadHash] = (JVSActionMapping){JVS_CALL_KEYPAD, KEYPAD_HASH};
     }
     else if (gId == R_TUNED_SBQW)
     {
@@ -904,6 +985,11 @@ void setDefaultMappings()
     {
         game_bindings = gDefaultWmmtBindings;
         bindingsCount = gDefaultWmmtBindingsSize;
+    }
+    else if (gGrp == GROUP_MAXIMUM_HEAT_3D)
+    {
+        game_bindings = gDefaultMaximumHeat3dBindings;
+        bindingsCount = gDefaultMaximumHeat3dBindingsSize;
     }
     else if (gameType == DIGITAL)
     {
@@ -1254,6 +1340,19 @@ int loadProfileFromIni(const IniSection *section)
 
     for (int i = 0; i < section->numPairs; i++)
     {
+        /*
+         * Maximum Heat 3D's cabinet TEST switch is a mode selector in the
+         * legacy ES1/N2 input path: once the test screen is entered, the
+         * switch must remain asserted until the next TEST press. Keep this
+         * setting profile-local so it cannot alter N2 or other games.
+         */
+        if (strcmp(section->name, "MaximumHeat3D") == 0 &&
+            strcmp(section->pairs[i].key, "TestToggle") == 0)
+        {
+            gActionProperties[SYSTEM][LA_Test].isToggle = atoi(section->pairs[i].value) != 0;
+            continue;
+        }
+
         JVSPlayer player;
         LogicalAction action;
         if (!parseActionKey(section->pairs[i].key, &player, &action))
@@ -2013,6 +2112,16 @@ void processSdlEvent(const SDL_Event *e)
         }
         break;
     }
+
+    /*
+     * Apply digital input transitions immediately. The normal frame-end
+     * flush can otherwise collapse a quick press and release into a single
+     * inactive state when both SDL events are queued in the same frame. This
+     * matters for cabinet switches such as ES1's TEST input, which the game
+     * samples through JVS rather than through SDL itself.
+     */
+    if (sdlInputInitialized && gNumChangedActions > 0)
+        processChangedActions();
 }
 
 /**
@@ -2184,6 +2293,9 @@ void processChangedActions()
         {
             case JVS_CALL_SWITCH:
                 setSwitch(player, map->jvsInput, state->isActive);
+                break;
+            case JVS_CALL_KEYPAD:
+                setKeypad(map->jvsInput, state->isActive);
                 break;
             case JVS_CALL_ANALOGUE:
                 // Special handling for digital actions that control an analog JVS input
@@ -2414,10 +2526,31 @@ bool needsPlayer(LogicalAction action, const char *name)
         case LA_ClimaxSwitch:
         case LA_CardInsert:
             return false;
+        case LA_Enter:
+        case LA_TestUp:
+        case LA_TestDown:
+        case LA_Nitro:
+        case LA_3DChange:
+            return strcmp(name, "MaximumHeat3D") != 0;
+        case LA_Keypad1:
+        case LA_Keypad2:
+        case LA_Keypad3:
+        case LA_Keypad4:
+        case LA_Keypad5:
+        case LA_Keypad6:
+        case LA_Keypad7:
+        case LA_Keypad8:
+        case LA_Keypad9:
+        case LA_KeypadStar:
+        case LA_Keypad0:
+        case LA_KeypadHash:
+            return strcmp(name, "MaximumHeat3D") != 0;
+        case LA_Service:
+            return strcmp(name, "MaximumHeat3D") != 0;
         case LA_Steer:
         case LA_Gas:
         case LA_Brake:
-            return strcmp(name, "WMMT") != 0;
+            return strcmp(name, "WMMT") != 0 && strcmp(name, "MaximumHeat3D") != 0;
         case LA_Up:
         case LA_Down:
         case LA_Left:

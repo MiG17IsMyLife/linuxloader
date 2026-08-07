@@ -23,6 +23,10 @@ void *sharedDlsym(void *handle, const char *symbol);
 int sharedDlclose(void *handle);
 char *sharedDlerror();
 
+int es1AudioDlopen(const char *filename, void **handle);
+void *es1AudioDlsym(void *handle, const char *symbol);
+int es1AudioDlclose(void *handle);
+
 #ifdef __cplusplus
 }
 #endif

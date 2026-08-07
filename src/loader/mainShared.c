@@ -135,11 +135,13 @@ uint32_t cleanElfCRC32[] = {
     0xAB70901C, // DVP-5020  | vf5
     0x6BAA510D, // DVP-5020  | vf5 | Ver 6.000
 	
-    0xB2722EEF, // Namco System N2 | WMMT3				| main
+    0xB2722EEF, // Namco System N2 | WMMT3 Japan		| main
     0xD3FC0089, // Namco System N2 | WMMT3 Export       | main
     0x68261E05, // Namco System N2 | WMMT3DX Export     | main
     0x509A97C4, // Namco System N2 | WMMT3DX+ Japan     | main
     0x5EEC418D, // Namco System N2 | Counter-Strike Neo | hlds_amd
+
+    0x6E2BE119, // Namco System ES1 | Maximum Heat 3D | a.elf
 };
 
 int cleanElfCRC32Count = sizeof(cleanElfCRC32) / sizeof(uint32_t);

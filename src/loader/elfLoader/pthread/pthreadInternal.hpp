@@ -205,6 +205,7 @@ public:
 
     // Thread mapping
     static PthreadThreadInternal* CreateThread(uint32_t* out_linux_tid);
+    static void                     RegisterThread(uint32_t linux_tid, DWORD win_tid);
     static PthreadThreadInternal* FindThread(uint32_t linux_tid);
     static PthreadThreadInternal* FindThreadByWinId(DWORD win_tid);
     static void                     DestroyThread(uint32_t linux_tid);

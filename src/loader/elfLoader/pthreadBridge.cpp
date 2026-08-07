@@ -171,24 +171,8 @@ namespace PthreadBridge
         MAP("sem_unlink", bridge_sem_unlink);
 
 
-        MAP("pthread_once", bridgePthreadOnce);
-
         MAP("sched_get_priority_max", bridgeSchedGetPriorityMax);
         MAP("sched_get_priority_min", bridgeSchedGetPriorityMin);
-    }
-
-    int bridgePthreadOnce(int *once_control, void (*init_routine)(void))
-    {
-        if (once_control && *once_control == 0)
-        {
-            *once_control = 1; // Running
-            if (init_routine)
-            {
-                init_routine();
-            }
-            *once_control = 2; // Completed
-        }
-        return 0; // Success
     }
 } // namespace PthreadBridge
 

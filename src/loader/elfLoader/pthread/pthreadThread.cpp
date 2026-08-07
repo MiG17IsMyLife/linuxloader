@@ -46,18 +46,28 @@ struct ThreadStartContext {
     PthreadThreadInternal* thread_info;
 };
 
+#if defined(__GNUC__)
+/* ES1's audio worker uses aligned SSE stores on its native pthread stack. */
+__attribute__((force_align_arg_pointer))
+#endif
 static unsigned __stdcall ThreadEntryPoint(void* param) {
     ThreadStartContext* ctx = (ThreadStartContext*)param;
     
     void* (*start_routine)(void*) = ctx->start_routine;
     void* arg = ctx->arg;
     PthreadThreadInternal* thread_info = ctx->thread_info;
+    const uint32_t linux_tid = ctx->linux_tid;
+
+    /* Register before entering guest code.  Otherwise pthread_self() on a
+     * newly-created thread allocates a second, detached mapper entry while
+     * the creator still owns the original pthread object. */
+    PthreadMapper::RegisterThread(linux_tid, GetCurrentThreadId());
     
     delete ctx;  // Free context
     
     // Setup cancel state for this thread
     SetupCancelState();
-    
+
     // Call the actual thread function
     void* retval = start_routine(arg);
     
@@ -208,7 +218,7 @@ int PthreadEmu::pthreadCreate(void* thread, const void* attr,
     
     // Return Linux thread ID to caller
     *(uint32_t*)thread = linux_tid;
-    
+
     return 0;
 }
 
@@ -226,7 +236,7 @@ int PthreadEmu::pthreadJoin(uint32_t thread, void** retval) {
     if (GetCurrentThreadId() == thread_info->win_thread_id) {
         return LINUX_EDEADLK;
     }
-    
+
     // Wait for thread to exit
     DWORD result = WaitForSingleObject(thread_info->handle, INFINITE);
     if (result != WAIT_OBJECT_0) {

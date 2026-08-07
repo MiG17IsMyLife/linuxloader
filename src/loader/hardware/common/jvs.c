@@ -7,7 +7,6 @@
 /* The in and out packets used to read and write to and from*/
 JVSPacket inputPacket, outputPacket;
 static JVSGpoHandler gpoHandler = NULL;
-
 void setJVSGpoHandler(JVSGpoHandler handler)
 {
     gpoHandler = handler;
@@ -48,6 +47,7 @@ int initJVS()
         io.capabilities.analogueInBits = 16;
         io.capabilities.rightAlignBits = 0;
         io.capabilities.analogueInChannels = 8;
+        io.capabilities.keypad = 1;
         io.capabilities.generalPurposeInputs = 0;
         io.capabilities.generalPurposeOutputs = 0;
         io.capabilities.analogueOutChannels = 0;
@@ -82,6 +82,7 @@ int initJVS()
         io.capabilities.analogueInBits = 16;
         io.capabilities.rightAlignBits = 0;
         io.capabilities.analogueInChannels = getConfig()->namcoN2.jvs.analogueInputs;
+        io.capabilities.keypad = 0;
         io.capabilities.generalPurposeInputs = getConfig()->namcoN2.jvs.generalPurposeInputs;
         io.capabilities.generalPurposeOutputs = getConfig()->namcoN2.jvs.generalPurposeOutputs;
         io.capabilities.analogueOutChannels = getConfig()->namcoN2.jvs.analogueOutputs;
@@ -102,6 +103,8 @@ int initJVS()
 
     for (int player = 0; player < (io.capabilities.players + 1); player++)
         io.state.inputSwitch[player] = 0;
+
+    io.state.keypad = 0;
 
     for (int analogueChannels = 0; analogueChannels < io.capabilities.analogueInChannels; analogueChannels++)
         io.state.analogueChannel[analogueChannels] = 0;
@@ -391,10 +394,14 @@ JVSStatus processPacket(int *packetSize)
 
         case CMD_READ_KEYPAD:
         {
-            ////printf("CMD_READ_KEYPAD\n");
-            outputPacket.data[outputPacket.length] = REPORT_SUCCESS;
-            outputPacket.data[outputPacket.length + 1] = 0x00;
-            outputPacket.length += 2;
+            /*
+             * Maximum Heat 3D reads this as a 16-bit keypad matrix word.
+             * The ES1 panel is wired as three columns by four rows, with the
+             * high byte carrying the row bits and the low byte the columns.
+             */
+            outputPacket.data[outputPacket.length++] = REPORT_SUCCESS;
+            outputPacket.data[outputPacket.length++] = (unsigned char)(io.state.keypad >> 8);
+            outputPacket.data[outputPacket.length++] = (unsigned char)io.state.keypad;
         }
         break;
 
@@ -736,6 +743,35 @@ int setAnalogue(JVSInput channel, int value)
     io.state.analogueChannel[channel] = value;
     pthread_mutex_unlock(&jvsMutex);
 
+    return 1;
+}
+
+int setKeypad(JVSInput key, int value)
+{
+    static const unsigned short keyMasks[] = {
+        [KEYPAD_1 - KEYPAD_1] = 0x0800 | 0x8000,
+        [KEYPAD_2 - KEYPAD_1] = 0x0400 | 0x8000,
+        [KEYPAD_3 - KEYPAD_1] = 0x0200 | 0x8000,
+        [KEYPAD_4 - KEYPAD_1] = 0x0800 | 0x4000,
+        [KEYPAD_5 - KEYPAD_1] = 0x0400 | 0x4000,
+        [KEYPAD_6 - KEYPAD_1] = 0x0200 | 0x4000,
+        [KEYPAD_7 - KEYPAD_1] = 0x0800 | 0x2000,
+        [KEYPAD_8 - KEYPAD_1] = 0x0400 | 0x2000,
+        [KEYPAD_9 - KEYPAD_1] = 0x0200 | 0x2000,
+        [KEYPAD_STAR - KEYPAD_1] = 0x0800 | 0x1000,
+        [KEYPAD_0 - KEYPAD_1] = 0x0400 | 0x1000,
+        [KEYPAD_HASH - KEYPAD_1] = 0x0200 | 0x1000,
+    };
+
+    if (key < KEYPAD_1 || key > KEYPAD_HASH)
+        return 0;
+
+    pthread_mutex_lock(&jvsMutex);
+    if (value)
+        io.state.keypad |= keyMasks[key - KEYPAD_1];
+    else
+        io.state.keypad &= (unsigned short)~keyMasks[key - KEYPAD_1];
+    pthread_mutex_unlock(&jvsMutex);
     return 1;
 }
 

@@ -11,7 +11,7 @@
 #define MAX_PLAYERS 4
 #define MAX_ENTITIES (MAX_PLAYERS + 1)
 #define MAX_JOYSTICKS 8
-#define MAX_JOY_BUTTONS 32
+#define MAX_JOY_BUTTONS 128
 #define MAX_JOY_AXES 32
 #define MAX_JOY_HATS 4
 #define MAX_MOUSE_BUTTONS 16
@@ -104,6 +104,24 @@ typedef enum
     LA_Agari,
     LA_Cancel,
     LA_ExitGame,
+    /* Namco System ES1 / Maximum Heat 3D cabinet controls. */
+    LA_Enter,
+    LA_TestUp,
+    LA_TestDown,
+    LA_Nitro,
+    LA_3DChange,
+    LA_Keypad1,
+    LA_Keypad2,
+    LA_Keypad3,
+    LA_Keypad4,
+    LA_Keypad5,
+    LA_Keypad6,
+    LA_Keypad7,
+    LA_Keypad8,
+    LA_Keypad9,
+    LA_KeypadStar,
+    LA_Keypad0,
+    LA_KeypadHash,
     NUM_LOGICAL_ACTIONS
 } LogicalAction;
 
@@ -188,6 +206,7 @@ typedef struct
     enum
     {
         JVS_CALL_SWITCH,
+        JVS_CALL_KEYPAD,
         JVS_CALL_ANALOGUE,
         JVS_CALL_COIN,
         JVS_CALL_NONE

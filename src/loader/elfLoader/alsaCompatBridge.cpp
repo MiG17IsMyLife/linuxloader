@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstring>
+#include <windows.h>
 
 namespace
 {
@@ -92,6 +93,18 @@ int bridgePcmState(void *pcm)
     return 3;
 }
 
+int bridgePcmWait(void *pcm, int timeout)
+{
+    (void)pcm;
+    /* The ES1 mixer feeds 256-frame periods at 48 kHz (~5.3 ms).  Returning
+     * immediately makes the game's audio worker busy-spin and can starve
+     * the graphics/input loop, so model the period wait on the host. */
+    const int waitMilliseconds = timeout < 0 ? 5 : (timeout < 5 ? timeout : 5);
+    if (waitMilliseconds > 0)
+        Sleep(static_cast<DWORD>(waitMilliseconds));
+    return 1;
+}
+
 long bridgePcmWritei(void *pcm, const void *buffer, unsigned long frames)
 {
     (void)pcm;
@@ -174,7 +187,7 @@ void initBridges()
     map("snd_pcm_sw_params_set_avail_min", bridgeAlsaSuccess);
     map("snd_pcm_sw_params_set_start_threshold", bridgeAlsaSuccess);
     map("snd_pcm_sw_params_set_xrun_mode", bridgeAlsaSuccess);
-    map("snd_pcm_wait", bridgeAlsaSuccess);
+    map("snd_pcm_wait", bridgePcmWait);
     map("snd_pcm_writei", bridgePcmWritei);
     map("snd_strerror", bridgeAlsaStrerror);
 }

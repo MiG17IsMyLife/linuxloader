@@ -560,12 +560,14 @@ extern "C"
             {
                 case SDL_EVENT_KEY_DOWN:
                     if (!hostEvent.key.repeat)
-                        platformHandleHostKey(static_cast<int>(hostEvent.key.key),
-                                               static_cast<uint32_t>(hostEvent.key.mod));
+                        platformHandleHostKeyEvent(static_cast<int>(hostEvent.key.key),
+                                                   static_cast<uint32_t>(hostEvent.key.mod), 1);
                     queueKey(hostEvent.key, true);
                     break;
 
                 case SDL_EVENT_KEY_UP:
+                    platformHandleHostKeyEvent(static_cast<int>(hostEvent.key.key),
+                                               static_cast<uint32_t>(hostEvent.key.mod), 0);
                     queueKey(hostEvent.key, false);
                     break;
 

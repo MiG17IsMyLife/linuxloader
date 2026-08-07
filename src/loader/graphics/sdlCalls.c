@@ -24,6 +24,8 @@
 #include "../hardware/namco/n2/n2.h"
 #if defined(_WIN32) || defined(__MINGW32__)
 #include "../hardware/common/cardControl.h"
+#include "../platform/platformBackend.h"
+extern void bridgeX11PumpInput(void);
 #endif
 #include "../log/log.h"
 #include "sdlCalls.h"
@@ -123,8 +125,18 @@ void keepWindowResponsive(void)
         return;
 
     g_lastPumpTicks = now;
-    /* Drain queued SDL callbacks while loading. */
-    pollEvents();
+    /*
+     * Pump the native queue without consuming it.  SDL 1.2 games have their
+     * own clInputDeviceKey::update() path; draining events here would make the
+     * loader see TEST but discard the same key before the guest test menu can
+     * see it.  The normal frame path still calls pollEvents() to update JVS
+     * action states.
+     */
+    SDL_PumpEvents();
+#if defined(_WIN32) || defined(__MINGW32__)
+    if (platformIsES1())
+        bridgeX11PumpInput();
+#endif
 }
 
 void startSDL()
@@ -219,6 +231,11 @@ void startSDL()
         log_error("OpenGL context could not be created! SDL_Error: %s\n", SDL_GetError());
         exit(EXIT_FAILURE);
     }
+
+    /* The QPC limiter below is the presentation clock when enabled. Do not
+     * let SDL's swap interval add a second, refresh-driven wait. */
+    if (getConfig()->fpsLimiter && !SDL_GL_SetSwapInterval(0))
+        log_warn("Failed to disable OpenGL VSync while FPS limiter is enabled: %s", SDL_GetError());
 
     if (!gladLoadGL((GLADloadfunc)SDL_GL_GetProcAddress))
     {
@@ -331,10 +348,10 @@ int presentSDLFrame(const SDLFramePresentOptions *options)
     if (gGrp == GROUP_WMMT3 && n2WmmtShouldBlit())
         blitStretch();
 
-    SDL_GL_SwapWindow(window);
-
     if (getConfig()->fpsLimiter)
         frameTiming();
+
+    SDL_GL_SwapWindow(window);
 
     if (options->title)
         showFpsInWindowTitle(options->title);
@@ -381,6 +398,11 @@ void pollEvents()
         {
             case SDL_EVENT_KEY_DOWN:
             {
+#if defined(_WIN32) || defined(__MINGW32__)
+                if (!event.key.repeat)
+                    platformHandleHostKeyEvent((int)event.key.key,
+                                               (uint32_t)event.key.mod, 1);
+#endif
                 if (gGrp != GROUP_LGJ && gId != PRIMEVAL_HUNT_SBPP)
                 {
                     SDL_Keymod mod = SDL_GetModState();
@@ -419,6 +441,10 @@ void pollEvents()
                 }
             }
             case SDL_EVENT_KEY_UP:
+#if defined(_WIN32) || defined(__MINGW32__)
+                platformHandleHostKeyEvent((int)event.key.key,
+                                           (uint32_t)event.key.mod, 0);
+#endif
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
             case SDL_EVENT_MOUSE_BUTTON_UP:
             case SDL_EVENT_MOUSE_MOTION:

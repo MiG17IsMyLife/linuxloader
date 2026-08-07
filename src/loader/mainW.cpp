@@ -42,9 +42,11 @@ extern int gGrp;
 
 LONG CALLBACK myVectoredHandler(PEXCEPTION_POINTERS ExceptionInfo)
 {
+    if (!ExceptionInfo || !ExceptionInfo->ExceptionRecord || !ExceptionInfo->ContextRecord)
+        return EXCEPTION_CONTINUE_SEARCH;
+
     DWORD exceptionCode = ExceptionInfo->ExceptionRecord->ExceptionCode;
     PCONTEXT ctx = ExceptionInfo->ContextRecord;
-
 
     if (exceptionCode == EXCEPTION_ACCESS_VIOLATION || exceptionCode == EXCEPTION_PRIV_INSTRUCTION) {
         uint8_t* pint = (uint8_t*)ctx->Eip;
@@ -58,7 +60,7 @@ LONG CALLBACK myVectoredHandler(PEXCEPTION_POINTERS ExceptionInfo)
     }
 
     return EXCEPTION_CONTINUE_SEARCH;
-}   
+}
 
 
 void initBridges()

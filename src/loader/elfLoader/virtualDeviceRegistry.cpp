@@ -66,6 +66,17 @@ namespace VirtualDeviceRegistry
         return nullptr;
     }
 
+    void *map(int fd, void *address, size_t length, int protection,
+              int flags, off_t offset)
+    {
+        for (size_t i = 0; i < deviceCount; ++i)
+        {
+            if (devices[i].ownsDescriptor(fd) && devices[i].map)
+                return devices[i].map(fd, address, length, protection, flags, offset);
+        }
+        return nullptr;
+    }
+
     void clear(void)
     {
         devices.fill({});

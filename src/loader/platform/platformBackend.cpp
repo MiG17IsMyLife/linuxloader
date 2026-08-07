@@ -102,9 +102,12 @@ extern "C" int platformHandleSystemCommand(const char *command)
 
 extern "C" int platformHandleHostKey(int key, uint32_t modifiers)
 {
-    if (platformIsES1())
-        return es1HandleHostKey(key, modifiers);
-    if (platformIsN2())
+    return platformHandleHostKeyEvent(key, modifiers, 1);
+}
+
+extern "C" int platformHandleHostKeyEvent(int key, uint32_t modifiers, int pressed)
+{
+    if (platformIsN2() && pressed)
         return n2HandleHostKey(key, modifiers);
     return 0;
 }

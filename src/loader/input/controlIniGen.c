@@ -178,6 +178,79 @@ const ControlBinding gDefaultWmmtBindings[] = {
 
 const size_t gDefaultWmmtBindingsSize = sizeof(gDefaultWmmtBindings) / sizeof(gDefaultWmmtBindings[0]);
 
+/*
+ * Maximum Heat 3D on Namco System ES1.
+ *
+ * The executable's clInputDeviceJamma::update() consumes the steering,
+ * accelerator and brake channels, plus the cabinet TEST, SERVICE, ENTER,
+ * TEST UP, TEST DOWN, VIEW CHANGE, NITRO and 3D CHANGE inputs. Their JVS
+ * mappings are installed in remapPerGame().
+ */
+const ControlBinding gDefaultMaximumHeat3dBindings[] = {
+    // Test-menu and cabinet buttons
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_T, AXIS_MODE_DIGITAL, 0, false, SYSTEM, LA_Test, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_S, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Service, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_RETURN, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Enter, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_I, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_TestUp, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_K, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_TestDown, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_V, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_ViewChange, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_Q, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Nitro, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_E, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_3DChange, -1, 0},
+
+    // Cabinet password keypad: 1-9, *, 0, #
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_KP_1, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad1, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_KP_2, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad2, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_KP_3, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad3, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_KP_4, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad4, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_KP_5, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad5, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_KP_6, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad6, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_KP_7, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad7, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_KP_8, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad8, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_KP_9, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad9, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_KP_MULTIPLY, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_KeypadStar, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_KP_0, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad0, -1, 0},
+    {INPUT_TYPE_KEY, 0, SDL_SCANCODE_KP_HASH, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_KeypadHash, -1, 0},
+
+    // SDL gamepad
+    {INPUT_TYPE_GAMEPAD_AXIS, 0, SDL_GAMEPAD_AXIS_LEFTX, AXIS_MODE_FULL, 0, false, PLAYER_1, LA_Steer, -1, 0},
+    {INPUT_TYPE_GAMEPAD_AXIS, 0, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, AXIS_MODE_FULL, 0, false, PLAYER_1, LA_Gas, -1, 0},
+    {INPUT_TYPE_GAMEPAD_AXIS, 0, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, AXIS_MODE_FULL, 0, false, PLAYER_1, LA_Brake, -1, 0},
+    {INPUT_TYPE_GAMEPAD_BUTTON, 0, SDL_GAMEPAD_BUTTON_DPAD_UP, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_TestUp, -1, 0},
+    {INPUT_TYPE_GAMEPAD_BUTTON, 0, SDL_GAMEPAD_BUTTON_DPAD_DOWN, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_TestDown, -1, 0},
+    {INPUT_TYPE_GAMEPAD_BUTTON, 0, SDL_GAMEPAD_BUTTON_BACK, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Service, -1, 0},
+    {INPUT_TYPE_GAMEPAD_BUTTON, 0, SDL_GAMEPAD_BUTTON_NORTH, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_ViewChange, -1, 0},
+    {INPUT_TYPE_GAMEPAD_BUTTON, 0, SDL_GAMEPAD_BUTTON_SOUTH, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Enter, -1, 0},
+    {INPUT_TYPE_GAMEPAD_BUTTON, 0, SDL_GAMEPAD_BUTTON_EAST, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Nitro, -1, 0},
+    {INPUT_TYPE_GAMEPAD_BUTTON, 0, SDL_GAMEPAD_BUTTON_WEST, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_3DChange, -1, 0},
+
+    // SDL joystick / vJoy
+    {INPUT_TYPE_JOY_AXIS, 0, 0, AXIS_MODE_FULL, 0, false, PLAYER_1, LA_Steer, -1, 0},
+    {INPUT_TYPE_JOY_AXIS, 0, 5, AXIS_MODE_FULL, 0, false, PLAYER_1, LA_Gas, -1, 0},
+    {INPUT_TYPE_JOY_AXIS, 0, 2, AXIS_MODE_FULL, 0, false, PLAYER_1, LA_Brake, -1, 0},
+    {INPUT_TYPE_JOY_HAT, 0, 0, AXIS_MODE_DIGITAL, SDL_HAT_UP, false, PLAYER_1, LA_TestUp, -1, 0},
+    {INPUT_TYPE_JOY_HAT, 0, 0, AXIS_MODE_DIGITAL, SDL_HAT_DOWN, false, PLAYER_1, LA_TestDown, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 10, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Service, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 2, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_ViewChange, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 0, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Enter, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 1, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Nitro, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 3, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_3DChange, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 4, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad1, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 5, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad2, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 6, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad3, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 7, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad4, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 8, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad5, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 9, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad6, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 17, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad7, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 12, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad8, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 13, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad9, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 14, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_KeypadStar, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 15, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Keypad0, -1, 0},
+    {INPUT_TYPE_JOY_BUTTON, 0, 16, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_KeypadHash, -1, 0},
+};
+
+const size_t gDefaultMaximumHeat3dBindingsSize =
+    sizeof(gDefaultMaximumHeat3dBindings) / sizeof(gDefaultMaximumHeat3dBindings[0]);
+
 const ControlBinding gDefaultFlyingBindings[] = {
     // Keyboard
     {INPUT_TYPE_KEY, 0, SDL_SCANCODE_LEFT, AXIS_MODE_DIGITAL, 0, false, PLAYER_1, LA_Flying_Left, -1, 0},
@@ -467,6 +540,9 @@ int createDefaultControlsIni(const char *fileName)
     addBindingsToIni(ini, "Digital", gDefaultDigitalBindings, gDefaultDigitalBindingsSize);
     addBindingsToIni(ini, "Driving", gDefaultDrivingBindings, gDefaultDrivingBindingsSize);
     addBindingsToIni(ini, "WMMT", gDefaultWmmtBindings, gDefaultWmmtBindingsSize);
+    addBindingsToIni(ini, "MaximumHeat3D", gDefaultMaximumHeat3dBindings,
+                     gDefaultMaximumHeat3dBindingsSize);
+    iniSetValue(ini, "MaximumHeat3D", "TestToggle", "1");
     addBindingsToIni(ini, "Flying", gDefaultFlyingBindings, gDefaultFlyingBindingsSize);
     addBindingsToIni(ini, "Shooting", gDefaultShootingBindings, gDefaultShootingBindingsSize);
     addBindingsToIni(ini, "Mahjong", gDefaultMahjongBindings, gDefaultMahjongBindingsSize);

@@ -8,6 +8,9 @@
 #include "../config/config.h"
 #include "../hardware/namco/n2/n2.h"
 #include "../hardware/namco/n2/n2Host.h"
+#include "../hardware/namco/es1/es1.h"
+#include "../hardware/namco/es1/es1Network.h"
+#include "virtualDeviceRegistry.hpp"
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -23,8 +26,23 @@
 #include <unordered_set>
 #include <vector>
 
-static std::mutex g_net_mutex;
-static std::mutex g_socket_mutex;
+class HostMutex
+{
+public:
+    HostMutex() { InitializeCriticalSection(&criticalSection); }
+    ~HostMutex() { DeleteCriticalSection(&criticalSection); }
+    HostMutex(const HostMutex &) = delete;
+    HostMutex &operator=(const HostMutex &) = delete;
+
+    void lock() { EnterCriticalSection(&criticalSection); }
+    void unlock() { LeaveCriticalSection(&criticalSection); }
+
+private:
+    CRITICAL_SECTION criticalSection{};
+};
+
+static HostMutex g_net_mutex;
+static HostMutex g_socket_mutex;
 
 static constexpr int g_firstSocketDescriptor = 512;
 static constexpr int g_lastSocketDescriptor = 1023;
@@ -40,6 +58,10 @@ struct SocketTable
     }
 };
 static SocketTable g_socketTable;
+static std::atomic<int> g_es1NetworkTraceCount{0};
+static std::atomic<int> g_es1PacketTraceCount{0};
+static std::atomic<int> g_es1PacketResultTraceCount{0};
+static std::atomic<int> g_es1PacketContentTraceCount{0};
 
 namespace
 {
@@ -64,7 +86,10 @@ bool getHostIPv4(in_addr *address)
     unsigned char bytes[4] = {};
     unsigned char mask[4] = {};
     unsigned char mac[6] = {};
-    if (!n2HostNetworkInterface(&interfaceIndex, bytes, mask, mac, &link))
+    const bool haveInterface = es1IsDetected()
+        ? es1HostAdapterAddress(bytes) != 0
+        : n2HostNetworkInterface(&interfaceIndex, bytes, mask, mac, &link) != 0;
+    if (!haveInterface)
         return false;
 
     std::memcpy(&address->s_addr, bytes, sizeof(bytes));
@@ -75,12 +100,21 @@ bool makeConfiguredBindAddress(const sockaddr *source, int sourceLength,
                                sockaddr_storage &destination, int &destinationLength)
 {
     const NamcoN2NetworkConfig *config = wmmtNetworkConfig();
-    if (!config || !config->enabled || !source ||
+    const bool es1 = es1IsDetected() != 0;
+    if ((!config || !config->enabled) && !es1)
+        return false;
+    if (!source ||
         sourceLength < static_cast<int>(sizeof(sockaddr_in)) || source->sa_family != AF_INET)
         return false;
 
     in_addr address = {};
-    if (config->bindAddress[0] != '\0')
+    if (es1)
+    {
+        const sockaddr_in *input = reinterpret_cast<const sockaddr_in *>(source);
+        if (input->sin_addr.s_addr == htonl(INADDR_ANY) || !getHostIPv4(&address))
+            return false;
+    }
+    else if (config->bindAddress[0] != '\0')
     {
         if (!parseIPv4(config->bindAddress, &address))
             return false;
@@ -99,6 +133,134 @@ bool makeConfiguredBindAddress(const sockaddr *source, int sourceLength,
                 static_cast<size_t>(std::min(sourceLength, static_cast<int>(sizeof(destination)))));
     reinterpret_cast<sockaddr_in *>(&destination)->sin_addr = address;
     destinationLength = sourceLength;
+    return true;
+}
+
+bool makeEs1GuestAddress(const sockaddr *source, int sourceLength,
+                         sockaddr_storage &destination, int &destinationLength)
+{
+    if (!es1IsDetected() || !source ||
+        sourceLength < static_cast<int>(sizeof(sockaddr_in)) || source->sa_family != AF_INET)
+        return false;
+
+    unsigned char guestBytes[4] = {};
+    if (!es1HostGuestAddress(guestBytes))
+        return false;
+
+    in_addr guestAddress = {};
+    std::memcpy(&guestAddress.s_addr, guestBytes, sizeof(guestBytes));
+    const sockaddr_in *input = reinterpret_cast<const sockaddr_in *>(source);
+    if (input->sin_addr.s_addr != guestAddress.s_addr)
+        return false;
+
+    std::memset(&destination, 0, sizeof(destination));
+    std::memcpy(&destination, source,
+                static_cast<size_t>(std::min(sourceLength, static_cast<int>(sizeof(destination)))));
+    // The guest socket is bound to the host adapter address.  Send the
+    // virtual cabinet packet back to that same adapter so Winsock delivers it
+    // to the listener, while the guest still observes its ES1 address in the
+    // received sockaddr/clLanBuffer fields.
+    in_addr hostAddress = {};
+    if (!getHostIPv4(&hostAddress))
+        return false;
+    reinterpret_cast<sockaddr_in *>(&destination)->sin_addr = hostAddress;
+    destinationLength = sourceLength;
+    log_debug("System ES1: mapped guest destination %u.%u.%u.%u to host adapter",
+              guestBytes[0], guestBytes[1], guestBytes[2], guestBytes[3]);
+    return true;
+}
+
+bool isEs1MessagePacket(const uint8_t *data, size_t length)
+{
+    /* The datagram is the complete clLanBuffer, not just its payload. */
+    if (!data || length < 0x18)
+        return false;
+    const uint16_t declaredLength = static_cast<uint16_t>(data[0]) |
+                                    (static_cast<uint16_t>(data[1]) << 8);
+    const uint32_t type = *reinterpret_cast<const uint32_t *>(data + 0x14);
+    return declaredLength >= 0x18 && declaredLength <= length &&
+           type >= 0x902 && type <= 0x90a;
+}
+
+void rememberEs1OutgoingPcb(const LinuxMsghdr *message)
+{
+    if (!es1IsDetected() || !message || !message->name || message->nameLength < sizeof(sockaddr_in) ||
+        !message->iov || message->iovCount == 0 ||
+        message->iov[0].length < 36)
+        return;
+
+    const sockaddr_in *name = static_cast<const sockaddr_in *>(message->name);
+    const uint8_t *data = static_cast<const uint8_t *>(message->iov[0].base);
+    if (g_es1PacketContentTraceCount.fetch_add(1) < 32)
+        log_debug("ES1 raw tx port=%u len=%u data=%02x %02x %02x %02x src=%08x type=%08x", ntohs(name->sin_port),
+                 static_cast<unsigned>(message->iov[0].length), data[0], data[1], data[2], data[3],
+                 *reinterpret_cast<const uint32_t *>(data + 8),
+                 *reinterpret_cast<const uint32_t *>(data + 0x14));
+    if (ntohs(name->sin_port) == 50765 && isEs1MessagePacket(data, message->iov[0].length))
+    {
+    log_debug("ES1 clLanBuffer tx len=%u src=%08x type=%08x", data[0] | (data[1] << 8),
+                 *reinterpret_cast<const uint32_t *>(data + 8),
+                 *reinterpret_cast<const uint32_t *>(data + 0x14));
+    }
+}
+
+void rewriteEs1MessagePeerAddress(sockaddr *address, int addressLength,
+                                  const uint8_t *data, size_t length)
+{
+    if (!es1IsDetected() || !address || addressLength < static_cast<int>(sizeof(sockaddr_in)) ||
+        address->sa_family != AF_INET || !isEs1MessagePacket(data, length))
+        return;
+
+    unsigned char peerBytes[4] = {};
+    if (!es1HostGuestAddress(peerBytes))
+        return;
+
+    const uint32_t type = *reinterpret_cast<const uint32_t *>(data + 0x14);
+    if (type == 0x903 && length >= 0x1c)
+    {
+        /* clNet::receive uses the low octet of the peer address as the ES1
+         * PCB slot.  On the physical LAN every cabinet shares the subnet and
+         * owns one such address; the packet's status payload carries that
+         * slot in its fourth byte.  Passing the host adapter address through
+         * unchanged (e.g. 192.168.32.115) makes the game index slot 115 and
+         * report a false duplicate. */
+        const unsigned char pcb = data[0x1b];
+        if (pcb >= 1 && pcb <= 4)
+            peerBytes[3] = pcb;
+    }
+    std::memcpy(&reinterpret_cast<sockaddr_in *>(address)->sin_addr.s_addr,
+                peerBytes, sizeof(peerBytes));
+}
+
+bool isEs1MulticastAddress(const sockaddr *source, int sourceLength)
+{
+    if (!es1IsDetected() || !source ||
+        sourceLength < static_cast<int>(sizeof(sockaddr_in)) || source->sa_family != AF_INET)
+        return false;
+
+    const sockaddr_in *input = reinterpret_cast<const sockaddr_in *>(source);
+    return ntohl(input->sin_addr.s_addr) == 0xe1000001u;
+}
+
+bool makeEs1MulticastAddress(const sockaddr *source, int sourceLength,
+                             sockaddr_storage &destination, int &destinationLength)
+{
+    if (!isEs1MulticastAddress(source, sourceLength))
+        return false;
+
+    std::memset(&destination, 0, sizeof(destination));
+    std::memcpy(&destination, source,
+                static_cast<size_t>(std::min(sourceLength, static_cast<int>(sizeof(destination)))));
+    // A single virtual cabinet must receive its own discovery datagrams.  The
+    // socket is bound to the host adapter, so use that address as the local
+    // endpoint instead of sending the guest multicast address to the physical
+    // network.
+    in_addr hostAddress = {};
+    if (!getHostIPv4(&hostAddress))
+        return false;
+    reinterpret_cast<sockaddr_in *>(&destination)->sin_addr = hostAddress;
+    destinationLength = sourceLength;
+    log_debug("System ES1: mapped discovery multicast 225.0.0.1 to the host adapter");
     return true;
 }
 
@@ -327,7 +489,7 @@ namespace NetworkBridge
 {
     static int registerSocket(SOCKET socket)
     {
-        std::lock_guard<std::mutex> lock(g_socket_mutex);
+        std::lock_guard<HostMutex> lock(g_socket_mutex);
 
         int freeSlot = -1;
         for (int slot = 0; slot < g_socketSlotCount; slot++)
@@ -372,7 +534,7 @@ namespace NetworkBridge
     {
         if (descriptor < g_firstSocketDescriptor || descriptor > g_lastSocketDescriptor)
             return;
-        std::lock_guard<std::mutex> lock(g_socket_mutex);
+        std::lock_guard<HostMutex> lock(g_socket_mutex);
         g_socketTable.slots[descriptor - g_firstSocketDescriptor].store(INVALID_SOCKET, std::memory_order_release);
     }
 
@@ -514,7 +676,9 @@ extern "C" SOCKET bridgeSocket(int af, int type, int protocol)
     }
 
     const NamcoN2NetworkConfig *config = wmmtNetworkConfig();
-    if (config && config->enabled && config->allowBroadcast && type == SOCK_DGRAM)
+    const bool es1Network = es1IsDetected();
+    if ((es1Network || (config && config->enabled && config->allowBroadcast)) &&
+        type == SOCK_DGRAM)
     {
         const int enabled = 1;
         setsockopt(s, SOL_SOCKET, SO_BROADCAST,
@@ -530,20 +694,101 @@ extern "C" SOCKET bridgeSocket(int af, int type, int protocol)
         errno = EMFILE;
         return (SOCKET)-1;
     }
+    if (g_es1NetworkTraceCount.fetch_add(1) < 8)
+        log_debug("Network bridge: socket guest=%d host=%lld type=%d", descriptor,
+                 (long long)s, type);
     log_trace(">>> socket EXIT: handle %lld as descriptor %d", (long long)s, descriptor);
     return static_cast<SOCKET>(descriptor);
 }
 
 extern "C" int bridgeConnect(SOCKET s, const struct sockaddr *name, int namelen)
 {
+    const int guestSocket = static_cast<int>(s);
     s = NetworkBridge::hostSocket(static_cast<int>(s));
     log_trace(">>> connect called: socket=%lld", (long long)s);
-    int ret = connect(s, name, namelen);
+    sockaddr_storage configuredAddress = {};
+    int configuredLength = namelen;
+    bool rewritten = makeEs1MulticastAddress(name, namelen, configuredAddress, configuredLength);
+    if (!rewritten)
+        rewritten = makeEs1GuestAddress(name, namelen, configuredAddress, configuredLength);
+    if (!rewritten && es1IsDetected() && name &&
+        namelen >= static_cast<int>(sizeof(sockaddr_in)) &&
+        name->sa_family == AF_INET &&
+        ntohs(reinterpret_cast<const sockaddr_in *>(name)->sin_port) == 50765)
+    {
+        /* clNet may pass the already-normalized virtual cabinet address to
+         * connect(), while the discovery datagrams still use 225.0.0.1.
+         * Both refer to the in-process ES1 terminal in a one-cabinet setup. */
+        rewritten = makeConfiguredBindAddress(name, namelen,
+                                              configuredAddress, configuredLength);
+    }
+    const sockaddr *destination = rewritten ? reinterpret_cast<const sockaddr *>(&configuredAddress) : name;
+    const bool es1LocalTerminal = es1IsDetected() && rewritten && destination &&
+                                  destination->sa_family == AF_INET &&
+                                  ntohs(reinterpret_cast<const sockaddr_in *>(destination)->sin_port) == 50765;
+    if (g_es1NetworkTraceCount.fetch_add(1) < 16)
+        log_debug("Network bridge: connect rewritten=%d port=%u", rewritten ? 1 : 0,
+                 ntohs(reinterpret_cast<const sockaddr_in *>(destination)->sin_port));
+    // Boost.Asio has already put the guest socket into non-blocking mode.  For
+    // the in-process ES1 terminal, temporarily complete the local handshake
+    // synchronously so the accepted and connecting sessions become a real
+    // pair before the guest begins its LAN protocol exchange.
+    u_long restoreNonBlocking = 0;
+    const bool restoreSocketMode = es1LocalTerminal &&
+                                   ioctlsocket(s, FIONBIO, &restoreNonBlocking) == 0;
+    if (restoreSocketMode)
+    {
+        u_long blocking = 0;
+        ioctlsocket(s, FIONBIO, &blocking);
+    }
+    int ret = connect(s, destination, configuredLength);
+    if (restoreSocketMode)
+    {
+        u_long nonBlocking = 1;
+        ioctlsocket(s, FIONBIO, &nonBlocking);
+    }
     if (ret == SOCKET_ERROR)
     {
-        errno = mapWSAErrorToErrno(WSAGetLastError());
-        log_debug("Network bridge: connect failed WSAError=%d errno=%d", WSAGetLastError(), errno);
+        const int wsaError = WSAGetLastError();
+        // The ES1 cabinet's virtual terminal is local to this process.  A
+        // Windows non-blocking connect can report WSAEWOULDBLOCK even though
+        // the loopback listener has already completed the handshake.  Finish
+        // that local transition here so the guest's epoll-based connector
+        // observes the same successful session as a physical cabinet LAN.
+        if (es1IsDetected() && wsaError == WSAEWOULDBLOCK)
+        {
+            // The peer is the in-process loopback listener.  Complete the
+            // short local handshake synchronously, then report success to
+            // the guest's asynchronous session machinery.
+            fd_set writeSet;
+            fd_set exceptionSet;
+            FD_ZERO(&writeSet);
+            FD_ZERO(&exceptionSet);
+            FD_SET(s, &writeSet);
+            FD_SET(s, &exceptionSet);
+            timeval timeout = {1, 0};
+            if (select(0, nullptr, &writeSet, &exceptionSet, &timeout) > 0)
+            {
+                int socketError = 0;
+                int socketErrorLength = sizeof(socketError);
+                if (getsockopt(s, SOL_SOCKET, SO_ERROR,
+                               reinterpret_cast<char *>(&socketError), &socketErrorLength) == 0 &&
+                    socketError == 0)
+                {
+                    ret = 0;
+                    errno = 0;
+                }
+            }
+        }
+        if (ret == SOCKET_ERROR)
+        {
+            errno = mapWSAErrorToErrno(WSAGetLastError());
+            log_debug("Network bridge: connect failed WSAError=%d errno=%d", WSAGetLastError(), errno);
+        }
     }
+    if (es1IsDetected() && g_es1PacketResultTraceCount.fetch_add(1) < 128)
+        log_debug("ES1 connect fd=%d result=%d errno=%d wsa=%d", guestSocket, ret,
+                 ret == SOCKET_ERROR ? errno : 0, ret == SOCKET_ERROR ? WSAGetLastError() : 0);
     log_trace(">>> connect EXIT: returning %d (WSAError=%d)", ret, ret < 0 ? WSAGetLastError() : 0);
     return ret;
 }
@@ -556,6 +801,9 @@ extern "C" int bridgeBind(SOCKET s, const struct sockaddr *name, int namelen)
     int configuredLength = namelen;
     const bool rewritten = makeConfiguredBindAddress(name, namelen, configuredAddress, configuredLength);
     const sockaddr *bindAddress = rewritten ? reinterpret_cast<const sockaddr *>(&configuredAddress) : name;
+    if (g_es1NetworkTraceCount.fetch_add(1) < 24)
+        log_debug("Network bridge: bind rewritten=%d port=%u", rewritten ? 1 : 0,
+                 ntohs(reinterpret_cast<const sockaddr_in *>(bindAddress)->sin_port));
     int ret = bind(s, bindAddress, configuredLength);
     if (ret == SOCKET_ERROR)
     {
@@ -571,6 +819,7 @@ extern "C" int bridgeBind(SOCKET s, const struct sockaddr *name, int namelen)
 
 extern "C" int bridgeListen(SOCKET s, int backlog)
 {
+    const int guestSocket = static_cast<int>(s);
     s = NetworkBridge::hostSocket(static_cast<int>(s));
     log_trace(">>> listen called: socket=%lld, backlog=%d", (long long)s, backlog);
     int ret = listen(s, backlog);
@@ -578,12 +827,18 @@ extern "C" int bridgeListen(SOCKET s, int backlog)
     {
         errno = mapWSAErrorToErrno(WSAGetLastError());
     }
+    if (es1IsDetected() && g_es1PacketResultTraceCount.fetch_add(1) < 128)
+        log_debug("ES1 listen fd=%d result=%d errno=%d", guestSocket, ret,
+                 ret == SOCKET_ERROR ? errno : 0);
+    if (es1IsDetected() && g_es1PacketResultTraceCount.fetch_add(1) < 128)
+        log_debug("ES1 recvfrom result=%d errno=%d", ret, ret == SOCKET_ERROR ? errno : 0);
     log_trace(">>> listen EXIT: returning %d", ret);
     return ret;
 }
 
 extern "C" SOCKET bridgeAccept(SOCKET s, struct sockaddr *addr, int *addrlen)
 {
+    const int guestSocket = static_cast<int>(s);
     s = NetworkBridge::hostSocket(static_cast<int>(s));
     log_trace(">>> accept ENTRY: socket=%lld (THIS MAY BLOCK!)", (long long)s);
     SOCKET ret = accept(s, addr, addrlen);
@@ -592,6 +847,30 @@ extern "C" SOCKET bridgeAccept(SOCKET s, struct sockaddr *addr, int *addrlen)
         errno = mapWSAErrorToErrno(WSAGetLastError());
         return (SOCKET)-1;
     }
+    /* The ES1 client session connects to the virtual PCB address, while the
+     * host listener necessarily sees the selected adapter address.  Restore
+     * the cabinet-visible peer on the accepted socket, just as recvmsg does
+     * for the UDP clLanBuffer path.  Otherwise clLanSession rejects its own
+     * terminal before it can publish client state to clNet. */
+    if (es1IsDetected() && addr && addrlen &&
+        *addrlen >= static_cast<int>(sizeof(sockaddr_in)) &&
+        addr->sa_family == AF_INET)
+    {
+        unsigned char adapterBytes[4] = {};
+        unsigned char guestBytes[4] = {};
+        if (es1HostAdapterAddress(adapterBytes) && es1HostGuestAddress(guestBytes))
+        {
+            in_addr adapterAddress = {};
+            in_addr guestAddress = {};
+            std::memcpy(&adapterAddress.s_addr, adapterBytes, sizeof(adapterBytes));
+            std::memcpy(&guestAddress.s_addr, guestBytes, sizeof(guestBytes));
+            auto *peer = reinterpret_cast<sockaddr_in *>(addr);
+            if (peer->sin_addr.s_addr == adapterAddress.s_addr)
+                peer->sin_addr = guestAddress;
+        }
+    }
+    if (es1IsDetected() && g_es1PacketResultTraceCount.fetch_add(1) < 128)
+        log_debug("ES1 accept fd=%d host=%lld", guestSocket, (long long)ret);
     const int descriptor = NetworkBridge::registerSocket(ret);
     if (descriptor < 0)
     {
@@ -614,7 +893,10 @@ extern "C" int bridgeShutdown(SOCKET s, int how)
 
 extern "C" int bridgeRecv(SOCKET s, char *buf, int len, int flags)
 {
+    const int guestSocket = static_cast<int>(s);
     s = NetworkBridge::hostSocket(static_cast<int>(s));
+    if (es1IsDetected() && g_es1PacketTraceCount.fetch_add(1) < 96)
+        log_debug("ES1 recv fd=%d len=%d flags=0x%x", guestSocket, len, flags);
     log_trace(">>> recv ENTRY: socket=%lld, len=%d (THIS MAY BLOCK!)", (long long)s, len);
 
     if (flags & 0x40)
@@ -627,13 +909,18 @@ extern "C" int bridgeRecv(SOCKET s, char *buf, int len, int flags)
     {
         errno = mapWSAErrorToErrno(WSAGetLastError());
     }
+    if (es1IsDetected() && g_es1PacketResultTraceCount.fetch_add(1) < 128)
+        log_debug("ES1 sendto result=%d errno=%d", ret, ret == SOCKET_ERROR ? errno : 0);
     log_trace(">>> recv EXIT: returning %d", ret);
     return ret;
 }
 
 extern "C" int bridgeSend(SOCKET s, const char *buf, int len, int flags)
 {
+    const int guestSocket = static_cast<int>(s);
     s = NetworkBridge::hostSocket(static_cast<int>(s));
+    if (es1IsDetected() && g_es1PacketTraceCount.fetch_add(1) < 96)
+        log_debug("ES1 send fd=%d len=%d flags=0x%x", guestSocket, len, flags);
     log_trace(">>> send called: socket=%lld, len=%d", (long long)s, len);
 
     flags &= ~(0x4000 | 0x40);
@@ -649,11 +936,22 @@ extern "C" int bridgeSend(SOCKET s, const char *buf, int len, int flags)
 
 extern "C" int bridgeRecvfrom(SOCKET s, char *buf, int len, int flags, struct sockaddr *from, int *fromlen)
 {
+    const int guestSocket = static_cast<int>(s);
     s = NetworkBridge::hostSocket(static_cast<int>(s));
+    if (es1IsDetected() && g_es1PacketTraceCount.fetch_add(1) < 96)
+        log_debug("ES1 recvfrom fd=%d len=%d flags=0x%x", guestSocket, len, flags);
     log_trace(">>> recvfrom ENTRY: socket=%lld, len=%d (THIS MAY BLOCK!)", (long long)s, len);
     if (flags & 0x40)
         flags &= ~0x40;
     int ret = recvfrom(s, buf, len, flags, from, fromlen);
+    if (ret >= 0)
+    {
+        rewriteEs1MessagePeerAddress(from, fromlen ? *fromlen : 0,
+                                     reinterpret_cast<const uint8_t *>(buf),
+                                     static_cast<size_t>(ret));
+    }
+    if (ret >= 0 && g_es1NetworkTraceCount.fetch_add(1) < 32)
+        log_debug("Network bridge: recvfrom bytes=%d", ret);
     if (ret == SOCKET_ERROR)
     {
         errno = mapWSAErrorToErrno(WSAGetLastError());
@@ -664,13 +962,30 @@ extern "C" int bridgeRecvfrom(SOCKET s, char *buf, int len, int flags, struct so
 
 extern "C" int bridgeSendto(SOCKET s, const char *buf, int len, int flags, const struct sockaddr *to, int tolen)
 {
+    const int guestSocket = static_cast<int>(s);
     s = NetworkBridge::hostSocket(static_cast<int>(s));
+    if (es1IsDetected() && g_es1PacketTraceCount.fetch_add(1) < 96)
+        log_debug("ES1 sendto fd=%d len=%d flags=0x%x", guestSocket, len, flags);
     log_trace(">>> sendto called: socket=%lld, len=%d", (long long)s, len);
     flags &= ~(0x4000 | 0x40);
     sockaddr_storage configuredAddress = {};
     int configuredLength = tolen;
-    const bool rewritten = makeConfiguredBroadcastAddress(to, tolen, configuredAddress, configuredLength);
+    /* Keep the ES1 discovery destination as multicast.  The guest's
+     * IP_MULTICAST_IF option selects the host adapter; rewriting this address
+     * to a unicast self-destination makes the cabinet receive its own status
+     * twice, unlike the physical ES1 LAN. */
+    bool rewritten = !isEs1MulticastAddress(to, tolen) &&
+                     makeEs1MulticastAddress(to, tolen, configuredAddress, configuredLength);
+    if (!rewritten)
+        rewritten = makeConfiguredBroadcastAddress(to, tolen, configuredAddress, configuredLength);
     const sockaddr *destination = rewritten ? reinterpret_cast<const sockaddr *>(&configuredAddress) : to;
+    if (!rewritten)
+        rewritten = makeEs1GuestAddress(to, tolen, configuredAddress, configuredLength);
+    destination = rewritten ? reinterpret_cast<const sockaddr *>(&configuredAddress) : to;
+    if (g_es1NetworkTraceCount.fetch_add(1) < 32)
+        log_debug("Network bridge: sendto bytes=%d rewritten=%d port=%u", len,
+                 rewritten ? 1 : 0,
+                 ntohs(reinterpret_cast<const sockaddr_in *>(destination)->sin_port));
     int ret = sendto(s, buf, len, flags, destination, configuredLength);
     if (ret == SOCKET_ERROR)
     {
@@ -718,7 +1033,12 @@ static bool buildWsaBuffers(const LinuxMsghdr *message, std::vector<WSABUF> &buf
 
 extern "C" int bridgeSendmsg(SOCKET s, const LinuxMsghdr *message, int flags)
 {
+    const int guestSocket = static_cast<int>(s);
     s = NetworkBridge::hostSocket(static_cast<int>(s));
+    if (es1IsDetected() && g_es1PacketTraceCount.fetch_add(1) < 96)
+        log_debug("ES1 sendmsg fd=%d iov=%u flags=0x%x name=%u", guestSocket,
+                 message ? message->iovCount : 0, flags, message ? message->nameLength : 0);
+    rememberEs1OutgoingPcb(message);
     std::vector<WSABUF> buffers;
     if (!buildWsaBuffers(message, buffers))
         return -1;
@@ -727,7 +1047,7 @@ extern "C" int bridgeSendmsg(SOCKET s, const LinuxMsghdr *message, int flags)
     {
         // Only used for SCM_RIGHTS style ancillary data, which the LAN code
         // never sends; dropping it is safer than failing the whole transfer.
-        log_warn(">>> sendmsg: dropping %u bytes of ancillary data",
+            log_debug(">>> sendmsg: dropping %u bytes of ancillary data",
                  static_cast<unsigned>(message->controlLength));
     }
 
@@ -735,9 +1055,23 @@ extern "C" int bridgeSendmsg(SOCKET s, const LinuxMsghdr *message, int flags)
     const DWORD wsaFlags = static_cast<DWORD>(translateMessageFlags(flags));
     sockaddr_storage configuredAddress = {};
     int configuredLength = message->nameLength;
-    const bool rewritten = makeConfiguredBroadcastAddress(
+    const struct sockaddr *messageDestination =
+        static_cast<const struct sockaddr *>(message->name);
+    const int messageDestinationLength = static_cast<int>(message->nameLength);
+    /* As in the real cabinet LAN, multicast discovery is sent to the group
+     * and is controlled by IP_MULTICAST_LOOP.  Only ordinary guest/host
+     * addresses are translated to the host adapter below. */
+    bool rewritten = !isEs1MulticastAddress(messageDestination, messageDestinationLength) &&
+                     makeEs1MulticastAddress(messageDestination, messageDestinationLength,
+                                             configuredAddress, configuredLength);
+    if (!rewritten)
+        rewritten = makeConfiguredBroadcastAddress(
         static_cast<const struct sockaddr *>(message->name), static_cast<int>(message->nameLength),
         configuredAddress, configuredLength);
+    if (!rewritten)
+        rewritten = makeEs1GuestAddress(static_cast<const struct sockaddr *>(message->name),
+                                        static_cast<int>(message->nameLength),
+                                        configuredAddress, configuredLength);
     const struct sockaddr *destination = rewritten
                                              ? reinterpret_cast<const struct sockaddr *>(&configuredAddress)
                                              : static_cast<const struct sockaddr *>(message->name);
@@ -753,8 +1087,13 @@ extern "C" int bridgeSendmsg(SOCKET s, const LinuxMsghdr *message, int flags)
     {
         errno = mapWSAErrorToErrno(WSAGetLastError());
         log_trace(">>> sendmsg EXIT: returning -1 (WSAError=%d)", WSAGetLastError());
+        if (es1IsDetected() && g_es1PacketResultTraceCount.fetch_add(1) < 128)
+            log_debug("ES1 sendmsg result=-1 errno=%d wsa=%d", errno, WSAGetLastError());
         return -1;
     }
+
+    if (es1IsDetected() && g_es1PacketResultTraceCount.fetch_add(1) < 128)
+        log_debug("ES1 sendmsg result=%d sent=%lu", ret, static_cast<unsigned long>(sent));
 
     log_trace(">>> sendmsg EXIT: socket=%lld sent %lu bytes in %u buffers",
              (long long)s, (unsigned long)sent, static_cast<unsigned>(buffers.size()));
@@ -763,7 +1102,11 @@ extern "C" int bridgeSendmsg(SOCKET s, const LinuxMsghdr *message, int flags)
 
 extern "C" int bridgeRecvmsg(SOCKET s, LinuxMsghdr *message, int flags)
 {
+    const int guestSocket = static_cast<int>(s);
     s = NetworkBridge::hostSocket(static_cast<int>(s));
+    if (es1IsDetected() && g_es1PacketTraceCount.fetch_add(1) < 96)
+        log_debug("ES1 recvmsg fd=%d iov=%u flags=0x%x name=%u", guestSocket,
+                 message ? message->iovCount : 0, flags, message ? message->nameLength : 0);
     std::vector<WSABUF> buffers;
     if (!buildWsaBuffers(message, buffers))
         return -1;
@@ -777,7 +1120,43 @@ extern "C" int bridgeRecvmsg(SOCKET s, LinuxMsghdr *message, int flags)
         ret = WSARecvFrom(s, buffers.data(), static_cast<DWORD>(buffers.size()), &received, &wsaFlags,
                           static_cast<struct sockaddr *>(message->name), &nameLength, nullptr, nullptr);
         if (ret != SOCKET_ERROR)
+        {
             message->nameLength = static_cast<uint32_t>(nameLength);
+            const uint8_t *data = (message->iov && message->iovCount != 0)
+                                      ? static_cast<const uint8_t *>(message->iov[0].base)
+                                      : nullptr;
+            const size_t dataLength = (message->iov && message->iovCount != 0)
+                                           ? static_cast<size_t>(received)
+                                           : 0;
+            /*
+             * Keep the clLanBuffer source field intact.  It is part of the
+             * ES1 buffer checksum and, for discovery packets, is the logical
+             * multicast address (0xe1000001), not the host adapter address.
+             * Only the outer UDP peer address is virtualized below.
+             */
+            rewriteEs1MessagePeerAddress(static_cast<struct sockaddr *>(message->name), nameLength,
+                                         data, dataLength);
+            if (es1IsDetected() && data && dataLength >= 36 &&
+                g_es1PacketContentTraceCount.fetch_add(1) < 32)
+            {
+                /* recvmsg() receives the complete clLanBuffer. */
+                const uint32_t bufferType = *reinterpret_cast<const uint32_t *>(data + 0x14);
+                const uint32_t bufferAddress = *reinterpret_cast<const uint32_t *>(data + 8);
+                const auto *peer = reinterpret_cast<const sockaddr_in *>(message->name);
+                log_debug("ES1 clLanBuffer len=%u type=0x%08x src=0x%08x peer=%u.%u.%u.%u",
+                         static_cast<unsigned>(data[0] | (data[1] << 8)),
+                         bufferType, bufferAddress,
+                         peer->sin_addr.S_un.S_un_b.s_b1, peer->sin_addr.S_un.S_un_b.s_b2,
+                         peer->sin_addr.S_un.S_un_b.s_b3, peer->sin_addr.S_un.S_un_b.s_b4);
+            }
+            if (es1IsDetected() && isEs1MessagePacket(data, dataLength) &&
+                g_es1PacketContentTraceCount.fetch_add(1) < 64)
+                log_debug("ES1 clLanBuffer rx len=%u src=%08x type=%08x payload=%02x %02x %02x %02x",
+                         static_cast<unsigned>(data[0] | (data[1] << 8)),
+                         *reinterpret_cast<const uint32_t *>(data + 8),
+                         *reinterpret_cast<const uint32_t *>(data + 0x14),
+                         data[0x18], data[0x19], data[0x1a], data[0x1b]);
+        }
     }
     else
     {
@@ -789,8 +1168,13 @@ extern "C" int bridgeRecvmsg(SOCKET s, LinuxMsghdr *message, int flags)
     {
         errno = mapWSAErrorToErrno(WSAGetLastError());
         log_trace(">>> recvmsg EXIT: returning -1 (WSAError=%d)", WSAGetLastError());
+        if (es1IsDetected() && g_es1PacketResultTraceCount.fetch_add(1) < 128)
+            log_debug("ES1 recvmsg result=-1 errno=%d wsa=%d", errno, WSAGetLastError());
         return -1;
     }
+
+    if (es1IsDetected() && g_es1PacketResultTraceCount.fetch_add(1) < 128)
+        log_debug("ES1 recvmsg result=%d received=%lu", ret, static_cast<unsigned long>(received));
 
     // Windows never reports ancillary data, so the caller must see none.
     message->controlLength = 0;
@@ -809,6 +1193,22 @@ extern "C" int bridgeGetpeername(SOCKET s, struct sockaddr *name, int *namelen)
     {
         errno = mapWSAErrorToErrno(WSAGetLastError());
         log_trace(">>> getpeername EXIT: returning -1 (WSAError=%d)", WSAGetLastError());
+    }
+    if (ret == 0 && es1IsDetected() && name && namelen &&
+        *namelen >= static_cast<int>(sizeof(sockaddr_in)) && name->sa_family == AF_INET)
+    {
+        unsigned char adapterBytes[4] = {};
+        unsigned char guestBytes[4] = {};
+        if (es1HostAdapterAddress(adapterBytes) && es1HostGuestAddress(guestBytes))
+        {
+            in_addr adapterAddress = {};
+            in_addr guestAddress = {};
+            std::memcpy(&adapterAddress.s_addr, adapterBytes, sizeof(adapterBytes));
+            std::memcpy(&guestAddress.s_addr, guestBytes, sizeof(guestBytes));
+            auto *peer = reinterpret_cast<sockaddr_in *>(name);
+            if (peer->sin_addr.s_addr == adapterAddress.s_addr)
+                peer->sin_addr = guestAddress;
+        }
     }
     return ret;
 }
@@ -906,7 +1306,7 @@ struct LinuxTimeval
 
 bool useHostMulticastInterface(in_addr &interfaceAddress)
 {
-    if (!n2IsWanganTitle())
+    if (!n2IsWanganTitle() && !es1IsDetected())
         return false;
 
     in_addr hostAddress = {};
@@ -920,7 +1320,10 @@ bool useHostMulticastInterface(in_addr &interfaceAddress)
 
 extern "C" int bridgeSetsockopt(SOCKET s, int level, int optname, const char *optval, int optlen)
 {
+    const int guestSocket = static_cast<int>(s);
     s = NetworkBridge::hostSocket(static_cast<int>(s));
+    if (es1IsDetected() && g_es1PacketTraceCount.fetch_add(1) < 96)
+        log_debug("ES1 setsockopt fd=%d level=%d opt=%d len=%d", guestSocket, level, optname, optlen);
     log_trace(">>> setsockopt called: socket=%lld, level=%d, optname=%d", (long long)s, level, optname);
 
     const int guestLevel = level;
@@ -1125,6 +1528,7 @@ extern "C" int NetworkBridge::bridgePoll(void *rawFds, int nfds, int timeout)
     guestIndexes.reserve(static_cast<size_t>(nfds));
 
     int invalidCount = 0;
+    int virtualReadyCount = 0;
     for (int i = 0; i < nfds; i++)
     {
         guestFds[i].revents = 0;
@@ -1133,8 +1537,21 @@ extern "C" int NetworkBridge::bridgePoll(void *rawFds, int nfds, int timeout)
 
         if (!NetworkBridge::isSocketDescriptor(guestFds[i].fd))
         {
-            guestFds[i].revents = 0x020; // POLLNVAL
-            invalidCount++;
+            if (const auto *device = VirtualDeviceRegistry::find(guestFds[i].fd))
+            {
+                if ((guestFds[i].events & 0x001) &&
+                    device->bytesAvailable(guestFds[i].fd) > 0)
+                    guestFds[i].revents |= 0x001; // POLLIN
+                if (guestFds[i].events & 0x004)
+                    guestFds[i].revents |= 0x004; // POLLOUT
+                if (guestFds[i].revents != 0)
+                    virtualReadyCount++;
+            }
+            else
+            {
+                guestFds[i].revents = 0x020; // POLLNVAL
+                invalidCount++;
+            }
             continue;
         }
 
@@ -1148,24 +1565,26 @@ extern "C" int NetworkBridge::bridgePoll(void *rawFds, int nfds, int timeout)
 
     if (hostFds.empty())
     {
-        if (invalidCount == 0 && timeout != 0)
+        if (virtualReadyCount == 0 && invalidCount == 0 && timeout != 0)
         {
-            if (timeout < 0)
-                Sleep(INFINITE);
-            else
-                Sleep(static_cast<DWORD>(timeout));
+            /* Virtual devices have no host wait handle.  Poll in short
+             * intervals so serial responses and camera frames can become
+             * visible without turning a blocking guest poll into a spin. */
+            const int waitMilliseconds = timeout < 0 ? 10 : std::min(timeout, 10);
+            Sleep(static_cast<DWORD>(waitMilliseconds));
         }
-        return invalidCount;
+        return invalidCount + virtualReadyCount;
     }
 
-    const int ready = WSAPoll(hostFds.data(), static_cast<ULONG>(hostFds.size()), timeout);
+    const int hostTimeout = virtualReadyCount != 0 ? 0 : timeout;
+    const int ready = WSAPoll(hostFds.data(), static_cast<ULONG>(hostFds.size()), hostTimeout);
     if (ready == SOCKET_ERROR)
     {
         errno = mapWSAErrorToErrno(WSAGetLastError());
         return -1;
     }
 
-    int resultCount = invalidCount;
+    int resultCount = invalidCount + virtualReadyCount;
     for (size_t i = 0; i < hostFds.size(); i++)
     {
         const short revents = winsockPollEventsToLinux(hostFds[i].revents);
@@ -1210,6 +1629,8 @@ extern "C" int bridgeSelectDescriptors(int nfds, void *readSet, void *writeSet, 
 
     int watchedSockets = 0;
     int ignoredDescriptors = 0;
+    std::vector<int> readyVirtualRead;
+    std::vector<int> readyVirtualWrite;
 
     const int limit = nfds < guestFdSetBits ? nfds : guestFdSetBits;
     const uint32_t *readWords = static_cast<const uint32_t *>(readSet);
@@ -1236,7 +1657,18 @@ extern "C" int bridgeSelectDescriptors(int nfds, void *readSet, void *writeSet, 
 
             if (!NetworkBridge::isSocketDescriptor(descriptor))
             {
-                ignoredDescriptors++;
+                if (const auto *device = VirtualDeviceRegistry::find(descriptor))
+                {
+                    const uint32_t mask = 1u << bit;
+                    if ((readBits & mask) && device->bytesAvailable(descriptor) > 0)
+                        readyVirtualRead.push_back(descriptor);
+                    if (writeBits & mask)
+                        readyVirtualWrite.push_back(descriptor);
+                }
+                else
+                {
+                    ignoredDescriptors++;
+                }
                 continue;
             }
 
@@ -1262,7 +1694,11 @@ extern "C" int bridgeSelectDescriptors(int nfds, void *readSet, void *writeSet, 
     {
         TIMEVAL hostTimeout = {};
         TIMEVAL *hostTimeoutPointer = nullptr;
-        if (guestTimeout)
+        if (!readyVirtualRead.empty() || !readyVirtualWrite.empty())
+        {
+            hostTimeoutPointer = &hostTimeout;
+        }
+        else if (guestTimeout)
         {
             hostTimeout.tv_sec = guestTimeout->seconds;
             hostTimeout.tv_usec = guestTimeout->microseconds;
@@ -1276,7 +1712,7 @@ extern "C" int bridgeSelectDescriptors(int nfds, void *readSet, void *writeSet, 
             return -1;
         }
     }
-    else if (guestTimeout)
+    else if (readyVirtualRead.empty() && readyVirtualWrite.empty() && guestTimeout)
     {
         // Winsock refuses a select() with nothing in it, so a wait on no
         // sockets is served by sleeping the caller's timeout out.
@@ -1290,6 +1726,16 @@ extern "C" int bridgeSelectDescriptors(int nfds, void *readSet, void *writeSet, 
 
     // POSIX counts every ready (descriptor, set) pair, not every descriptor.
     int count = 0;
+    for (const int descriptor : readyVirtualRead)
+    {
+        guestFdSet(descriptor, readSet);
+        count++;
+    }
+    for (const int descriptor : readyVirtualWrite)
+    {
+        guestFdSet(descriptor, writeSet);
+        count++;
+    }
     if (selected > 0)
     {
         for (u_int i = 0; i < hostRead.fd_count; i++)
@@ -1398,12 +1844,12 @@ struct GuestAddrinfoNode
     char canonicalName[NI_MAXHOST] = {};
 };
 
-std::mutex g_addrinfo_mutex;
+HostMutex g_addrinfo_mutex;
 std::unordered_set<LinuxAddrinfo *> g_addrinfo_nodes;
 
 void freeGuestAddrinfoChain(LinuxAddrinfo *result)
 {
-    std::lock_guard<std::mutex> lock(g_addrinfo_mutex);
+    std::lock_guard<HostMutex> lock(g_addrinfo_mutex);
     while (result)
     {
         auto found = g_addrinfo_nodes.find(result);
@@ -1480,7 +1926,7 @@ extern "C" int NetworkBridge::bridgeGetaddrinfo(const char *node, const char *se
             previous->aiNext = &guest->info;
         previous = &guest->info;
 
-        std::lock_guard<std::mutex> lock(g_addrinfo_mutex);
+        std::lock_guard<HostMutex> lock(g_addrinfo_mutex);
         g_addrinfo_nodes.insert(&guest->info);
     }
 
@@ -1593,7 +2039,7 @@ namespace
 
 extern "C" void *bridgeGethostbyname(const char *name)
 {
-    std::lock_guard<std::mutex> lock(g_net_mutex);
+    std::lock_guard<HostMutex> lock(g_net_mutex);
 
     LinuxHostent *record = name ? resolveHost(name) : nullptr;
     if (!record)
@@ -1610,7 +2056,7 @@ extern "C" void *bridgeGethostbyname(const char *name)
 
 int NetworkBridge::bridgeGethostbyname_r(const char *name, void *ret, char *buf, size_t buflen, void **result, int *h_errnop)
 {
-    std::lock_guard<std::mutex> lock(g_net_mutex);
+    std::lock_guard<HostMutex> lock(g_net_mutex);
 
     LinuxHostent *record = name ? resolveHost(name) : nullptr;
     if (!record)
@@ -1631,7 +2077,7 @@ int NetworkBridge::bridgeGethostbyname_r(const char *name, void *ret, char *buf,
 
 extern "C" void *bridgeGethostbyaddr(const void *addr, int len, int type)
 {
-    std::lock_guard<std::mutex> lock(g_net_mutex);
+    std::lock_guard<HostMutex> lock(g_net_mutex);
 
     if (!addr || len != 4 || type != AF_INET)
         return nullptr;
@@ -1660,7 +2106,7 @@ static_assert(sizeof(struct LinuxServent) == 16, "i386 struct servent is 16 byte
 
 extern "C" void *bridgeGetservbyname(const char *name, const char *proto)
 {
-    std::lock_guard<std::mutex> lock(g_net_mutex);
+    std::lock_guard<HostMutex> lock(g_net_mutex);
 
     struct servent *entry = name ? getservbyname(name, proto) : nullptr;
     if (!entry)
@@ -1680,7 +2126,7 @@ extern "C" void *bridgeGetservbyname(const char *name, const char *proto)
 int NetworkBridge::bridgeGethostbyaddr_r(const void *addr, int len, int type, void *ret, char *buf, size_t buflen, void **result,
                                          int *h_errnop)
 {
-    std::lock_guard<std::mutex> lock(g_net_mutex);
+    std::lock_guard<HostMutex> lock(g_net_mutex);
     struct hostent *he = gethostbyaddr((const char *)addr, len, type);
     if (!he)
     {

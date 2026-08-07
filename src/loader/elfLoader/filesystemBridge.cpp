@@ -19,6 +19,14 @@
 
 extern std::string g_absoluteElfPath;
 
+namespace Es1CompatBridge
+{
+bool isEventfd(int fd);
+int readEventfd(int fd, void *buffer, size_t length);
+int writeEventfd(int fd, const void *buffer, size_t length);
+int closeEventfd(int fd);
+}
+
 #define MAP(name, func) SymbolResolver::GetInstance().RegisterVTable(name, reinterpret_cast<void *>(func))
 
 static char g_dlErrorBuf[256];
@@ -57,6 +65,8 @@ namespace FileSystemBridge
     static ssize_t bridgeReadDescriptor(int fd, void *buffer, size_t count)
     {
         keepWindowResponsive();
+        if (Es1CompatBridge::isEventfd(fd))
+            return Es1CompatBridge::readEventfd(fd, buffer, count);
         if (const auto *device = VirtualDeviceRegistry::find(fd))
             return device->read(fd, buffer, count);
         if (NetworkBridge::isSocketDescriptor(fd))
@@ -66,6 +76,8 @@ namespace FileSystemBridge
 
     static ssize_t bridgeWriteDescriptor(int fd, const void *buffer, size_t count)
     {
+        if (Es1CompatBridge::isEventfd(fd))
+            return Es1CompatBridge::writeEventfd(fd, buffer, count);
         if (const auto *device = VirtualDeviceRegistry::find(fd))
             return device->write(fd, buffer, count);
         if (NetworkBridge::isSocketDescriptor(fd))
@@ -75,6 +87,8 @@ namespace FileSystemBridge
 
     static int bridgeCloseDescriptor(int fd)
     {
+        if (Es1CompatBridge::isEventfd(fd))
+            return Es1CompatBridge::closeEventfd(fd);
         if (const auto *device = VirtualDeviceRegistry::find(fd))
             return device->close(fd);
         if (NetworkBridge::isSocketDescriptor(fd))
@@ -436,8 +450,16 @@ extern "C"
     struct linux_dirent *bridgeReaddir(void *dirp)
     {
         if (!dirp)
+        {
+            errno = EINVAL;
             return NULL;
+        }
         DIR_Impl *dir = (DIR_Impl *)dirp;
+
+        // POSIX readdir reports end-of-directory with a null result and no
+        // error.  Clear stale CRT errno values so Boost.Filesystem does not
+        // turn a normal FindNextFile EOF into an EINVAL exception.
+        errno = 0;
 
         if (dir->finished)
             return NULL;
@@ -459,7 +481,9 @@ extern "C"
         dir->ent.d_ino = 1;
         dir->ent.d_off = 0;
 
-        strncpy(dir->ent.d_name, dir->findData.cFileName, 260);
+        strncpy(dir->ent.d_name, dir->findData.cFileName,
+                sizeof(dir->ent.d_name) - 1);
+        dir->ent.d_name[sizeof(dir->ent.d_name) - 1] = '\0';
         dir->ent.d_reclen = (unsigned short)strlen(dir->ent.d_name);
 
         if (dir->findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)

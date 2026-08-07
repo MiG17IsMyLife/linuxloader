@@ -13,7 +13,6 @@ int es1InstallHooks(void);
 int es1InstallLateHooks(void);
 int es1InitializeGraphics(void);
 int es1HandleSystemCommand(const char *command);
-int es1HandleHostKey(int key, uint32_t modifiers);
 const char *es1GetGameTitle(void);
 const char *es1GetGameShortTitle(void);
 const char *es1GetGameId(void);

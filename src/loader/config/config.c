@@ -49,7 +49,7 @@ static int detectGame(uint32_t elf_crc)
         config.width = 1360;
         config.height = 768;
         config.gameGroup = GROUP_MAXIMUM_HEAT_3D;
-        log_warn("System ES1 support is experimental: I/O devices are compatibility stubs");
+        log_warn("System ES1 support is experimental: cabinet I/O is emulated by Pacloader");
         return 0;
     }
 

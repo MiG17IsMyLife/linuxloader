@@ -137,6 +137,20 @@ typedef enum
     EXIT_GAME = 97,
     COIN = 98,
     NONE = 99,
+
+    /* Namco ES1 cabinet keypad matrix positions. */
+    KEYPAD_1 = 100,
+    KEYPAD_2 = 101,
+    KEYPAD_3 = 102,
+    KEYPAD_4 = 103,
+    KEYPAD_5 = 104,
+    KEYPAD_6 = 105,
+    KEYPAD_7 = 106,
+    KEYPAD_8 = 107,
+    KEYPAD_9 = 108,
+    KEYPAD_STAR = 109,
+    KEYPAD_0 = 110,
+    KEYPAD_HASH = 111,
 } JVSInput;
 
 typedef enum
@@ -155,6 +169,7 @@ typedef struct
     int analogueChannel[JVS_MAX_STATE_SIZE];
     int gunChannel[JVS_MAX_STATE_SIZE];
     int rotaryChannel[JVS_MAX_STATE_SIZE];
+    unsigned short keypad;
 } JVSState;
 
 typedef struct
@@ -246,6 +261,7 @@ JVSIO* getJVSIO();
 int setSwitch(JVSPlayer player, JVSInput switchNumber, int value);
 int incrementCoin(JVSPlayer player, int amount);
 int setAnalogue(JVSInput channel, int value);
+int setKeypad(JVSInput key, int value);
 
 #ifdef __cplusplus
 }
